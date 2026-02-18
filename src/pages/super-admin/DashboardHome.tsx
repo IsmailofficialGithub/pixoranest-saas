@@ -30,6 +30,7 @@ interface AdminRow {
   profile_email: string | null;
   profile_name: string | null;
   client_count: number;
+  role: string | null;
 }
 
 interface ClientRow {
@@ -105,7 +106,7 @@ export default function DashboardHome() {
         // Enrich admins with profile + client count
         const adminRows: AdminRow[] = [];
         for (const a of recentAdmins.data ?? []) {
-          const [profileRes, countRes] = await Promise.all([
+          const [profileRes, countRes, roleRes] = await Promise.all([
             supabase.from("profiles").select("email, full_name").eq("user_id", a.user_id).maybeSingle(),
             supabase.from("clients").select("id", { count: "exact", head: true }).eq("admin_id", a.id),
             supabase.from("user_roles").select("role").eq("user_id", a.user_id).maybeSingle(),
@@ -123,7 +124,7 @@ export default function DashboardHome() {
         // Enrich clients with profile + admin company
         const clientRows: ClientRow[] = [];
         for (const c of recentClients.data ?? []) {
-          const [profileRes, adminRes] = await Promise.all([
+          const [profileRes, adminRes, roleRes] = await Promise.all([
             supabase.from("profiles").select("email, full_name").eq("user_id", c.user_id).maybeSingle(),
             supabase.from("admins").select("company_name").eq("id", c.admin_id).maybeSingle(),
             supabase.from("user_roles").select("role").eq("user_id", c.user_id).maybeSingle(),
