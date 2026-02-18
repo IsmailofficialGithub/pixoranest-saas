@@ -1,0 +1,727 @@
+import { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAdmin } from "@/contexts/AdminContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  ChartContainer, ChartTooltip, ChartTooltipContent,
+} from "@/components/ui/chart";
+import {
+  Users, Package, TrendingUp, Coins, UserPlus, DollarSign,
+  FileText, ArrowRight, AlertTriangle, Eye, Pencil,
+  Phone, MessageSquare as MessageSquareIcon, Share2 as Share2Icon,
+  Package as PackageIcon, Lock,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import {
+  BarChart, Bar, XAxis, YAxis, ResponsiveContainer,
+  LineChart, Line, CartesianGrid, Tooltip, Area, AreaChart,
+} from "recharts";
+import DashboardWidgets from "@/components/admin/DashboardWidgets";
+import { useAdminServices } from "@/hooks/useAdminServices";
+import { SERVICE_ROUTE_MAP } from "@/lib/service-routes";
+import ClientFormModal from "@/components/admin/ClientFormModal";
+
+interface DashboardStats {
+  totalClients: number;
+  activeServices: number;
+  thisMonthRevenue: number;
+  lastMonthRevenue: number;
+  commissionEarned: number;
+}
+
+interface RecentClient {
+  id: string;
+  company_name: string;
+  is_active: boolean;
+  created_at: string;
+  user_id: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  active_services: number;
+}
+
+interface ServiceUsage {
+  service_name: string;
+  usage_count: number;
+}
+
+interface RevenueTrend {
+  date: string;
+  revenue: number;
+}
+
+interface PendingAlerts {
+  pendingActivation: number;
+  nearUsageLimit: number;
+  pendingInvoices: number;
+}
+
+export default function AdminDashboardHome() {
+  const { profile } = useAuth();
+  const { admin, primaryColor, secondaryColor } = useAdmin();
+  const navigate = useNavigate();
+  const [editClientId, setEditClientId] = useState<string | null>(null);
+
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentClients, setRecentClients] = useState<RecentClient[]>([]);
+  const [serviceUsage, setServiceUsage] = useState<ServiceUsage[]>([]);
+  const [revenueTrend, setRevenueTrend] = useState<RevenueTrend[]>([]);
+  const [alerts, setAlerts] = useState<PendingAlerts>({ pendingActivation: 0, nearUsageLimit: 0, pendingInvoices: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!admin) return;
+    fetchAllData();
+  }, [admin]);
+
+  async function fetchAllData() {
+    setIsLoading(true);
+    await Promise.all([
+      fetchStats(),
+      fetchRecentClients(),
+      fetchServiceUsage(),
+      fetchRevenueTrend(),
+      fetchAlerts(),
+    ]);
+    setIsLoading(false);
+  }
+
+  async function fetchStats() {
+    if (!admin) return;
+
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString();
+
+    const [clientsRes, servicesRes, thisMonthRes, lastMonthRes] = await Promise.all([
+      supabase.from("clients").select("id", { count: "exact", head: true })
+        .eq("admin_id", admin.id).eq("is_active", true),
+      supabase.from("client_services").select("service_id")
+        .in("client_id", (await supabase.from("clients").select("id").eq("admin_id", admin.id)).data?.map(c => c.id) || [])
+        .eq("is_active", true),
+      supabase.from("invoices").select("total_amount")
+        .eq("admin_id", admin.id).eq("status", "paid")
+        .gte("invoice_date", thisMonthStart.split("T")[0]),
+      supabase.from("invoices").select("total_amount")
+        .eq("admin_id", admin.id).eq("status", "paid")
+        .gte("invoice_date", lastMonthStart.split("T")[0])
+        .lte("invoice_date", lastMonthEnd.split("T")[0]),
+    ]);
+
+    const uniqueServices = new Set(servicesRes.data?.map(s => s.service_id) || []);
+    const thisMonthRevenue = thisMonthRes.data?.reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0;
+    const lastMonthRevenue = lastMonthRes.data?.reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0;
+    const commissionRate = admin.commission_rate ?? 0;
+
+    setStats({
+      totalClients: clientsRes.count || 0,
+      activeServices: uniqueServices.size,
+      thisMonthRevenue,
+      lastMonthRevenue,
+      commissionEarned: thisMonthRevenue * (commissionRate / 100),
+    });
+  }
+
+  async function fetchRecentClients() {
+    if (!admin) return;
+    const { data: clients } = await supabase
+      .from("clients")
+      .select("id, company_name, is_active, created_at, user_id")
+      .eq("admin_id", admin.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (!clients?.length) { setRecentClients([]); return; }
+
+    const userIds = clients.map(c => c.user_id);
+    const clientIds = clients.map(c => c.id);
+
+    const [profilesRes, servicesRes] = await Promise.all([
+      supabase.from("profiles").select("user_id, full_name, email").in("user_id", userIds),
+      supabase.from("client_services").select("client_id").in("client_id", clientIds).eq("is_active", true),
+    ]);
+
+    const profileMap = new Map(profilesRes.data?.map(p => [p.user_id, p]) || []);
+    const serviceCountMap = new Map<string, number>();
+    servicesRes.data?.forEach(s => {
+      serviceCountMap.set(s.client_id, (serviceCountMap.get(s.client_id) || 0) + 1);
+    });
+
+    setRecentClients(clients.map(c => {
+      const p = profileMap.get(c.user_id);
+      return {
+        ...c,
+        contact_name: p?.full_name || null,
+        contact_email: p?.email || null,
+        active_services: serviceCountMap.get(c.id) || 0,
+      };
+    }));
+  }
+
+  async function fetchServiceUsage() {
+    if (!admin) return;
+    const { data: clientIds } = await supabase.from("clients").select("id").eq("admin_id", admin.id);
+    if (!clientIds?.length) { setServiceUsage([]); return; }
+
+    const { data: cs } = await supabase
+      .from("client_services")
+      .select("service_id")
+      .in("client_id", clientIds.map(c => c.id))
+      .eq("is_active", true);
+
+    if (!cs?.length) { setServiceUsage([]); return; }
+
+    const serviceIds = [...new Set(cs.map(s => s.service_id))];
+    const { data: services } = await supabase.from("services").select("id, name").in("id", serviceIds);
+
+    const countMap = new Map<string, number>();
+    cs.forEach(s => countMap.set(s.service_id, (countMap.get(s.service_id) || 0) + 1));
+
+    const nameMap = new Map(services?.map(s => [s.id, s.name]) || []);
+    setServiceUsage(
+      Array.from(countMap.entries())
+        .map(([id, count]) => ({ service_name: nameMap.get(id) || "Unknown", usage_count: count }))
+        .sort((a, b) => b.usage_count - a.usage_count)
+    );
+  }
+
+  async function fetchRevenueTrend() {
+    if (!admin) return;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const { data } = await supabase
+      .from("invoices")
+      .select("invoice_date, total_amount")
+      .eq("admin_id", admin.id)
+      .eq("status", "paid")
+      .gte("invoice_date", thirtyDaysAgo.toISOString().split("T")[0])
+      .order("invoice_date", { ascending: true });
+
+    const byDate = new Map<string, number>();
+    data?.forEach(inv => {
+      const d = inv.invoice_date;
+      byDate.set(d, (byDate.get(d) || 0) + Number(inv.total_amount));
+    });
+
+    // Fill in all 30 days
+    const trend: RevenueTrend[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split("T")[0];
+      trend.push({ date: key, revenue: byDate.get(key) || 0 });
+    }
+    setRevenueTrend(trend);
+  }
+
+  async function fetchAlerts() {
+    if (!admin) return;
+    const { data: clientIds } = await supabase.from("clients").select("id").eq("admin_id", admin.id);
+    if (!clientIds?.length) return;
+
+    const ids = clientIds.map(c => c.id);
+
+    const [pendingRes, usageRes, invoiceRes] = await Promise.all([
+      supabase.from("client_workflow_instances").select("id", { count: "exact", head: true })
+        .in("client_id", ids).eq("status", "pending"),
+      supabase.from("client_services").select("usage_consumed, usage_limit")
+        .in("client_id", ids).eq("is_active", true),
+      supabase.from("invoices").select("id", { count: "exact", head: true })
+        .eq("admin_id", admin.id).in("status", ["draft", "sent"]),
+    ]);
+
+    const nearLimit = usageRes.data?.filter(s =>
+      s.usage_limit > 0 && (s.usage_consumed || 0) >= s.usage_limit * 0.8
+    ).length || 0;
+
+    setAlerts({
+      pendingActivation: pendingRes.count || 0,
+      nearUsageLimit: nearLimit,
+      pendingInvoices: invoiceRes.count || 0,
+    });
+  }
+
+  const revenueTrendPercent = useMemo(() => {
+    if (!stats) return 0;
+    if (stats.lastMonthRevenue === 0) return stats.thisMonthRevenue > 0 ? 100 : 0;
+    return Math.round(((stats.thisMonthRevenue - stats.lastMonthRevenue) / stats.lastMonthRevenue) * 100);
+  }, [stats]);
+
+  const hasAlerts = alerts.pendingActivation > 0 || alerts.nearUsageLimit > 0 || alerts.pendingInvoices > 0;
+
+  const chartConfig = {
+    revenue: { label: "Revenue", color: primaryColor },
+    usage_count: { label: "Usage", color: primaryColor },
+  };
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Welcome Banner */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-bold text-foreground truncate">
+            Welcome back, {profile?.full_name || profile?.email}!
+          </h1>
+          <p className="text-xs md:text-sm text-muted-foreground">
+            {admin?.company_name} Dashboard
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground hidden sm:block shrink-0">
+          {format(new Date(), "EEEE, MMMM d, yyyy")}
+        </p>
+      </div>
+
+      {/* Pending Alerts */}
+      {hasAlerts && (
+        <Alert className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription className="flex flex-wrap gap-3 text-sm">
+            {alerts.pendingActivation > 0 && (
+              <span>{alerts.pendingActivation} client(s) waiting for service activation</span>
+            )}
+            {alerts.nearUsageLimit > 0 && (
+              <span>{alerts.nearUsageLimit} client(s) reached 80%+ usage limit</span>
+            )}
+            {alerts.pendingInvoices > 0 && (
+              <span>{alerts.pendingInvoices} invoice(s) pending payment</span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Stats Cards */}
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <StatsCard
+          icon={<Users className="h-5 w-5" />}
+          iconColor={primaryColor}
+          label="My Clients"
+          value={stats?.totalClients ?? 0}
+          subtext="Active clients"
+          linkText="View all"
+          onLinkClick={() => navigate("/admin/clients")}
+        />
+        <StatsCard
+          icon={<Package className="h-5 w-5" />}
+          iconColor={primaryColor}
+          label="Services in Use"
+          value={stats?.activeServices ?? 0}
+          subtext="By all clients"
+        />
+        <StatsCard
+          icon={<TrendingUp className="h-5 w-5" />}
+          iconColor={secondaryColor}
+          label="This Month Revenue"
+          value={`₹${(stats?.thisMonthRevenue ?? 0).toLocaleString("en-IN")}`}
+          subtext="From paid invoices"
+          trend={revenueTrendPercent}
+        />
+        <StatsCard
+          icon={<Coins className="h-5 w-5" />}
+          iconColor={secondaryColor}
+          label="Commission Earned"
+          value={`₹${(stats?.commissionEarned ?? 0).toLocaleString("en-IN")}`}
+          subtext={`${admin?.commission_rate ?? 0}% commission rate`}
+        />
+      </div>
+
+      {/* Quick Actions */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible">
+            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0" onClick={() => navigate("/admin/clients")}>
+              <UserPlus className="h-5 w-5 text-muted-foreground" />
+              <span className="text-xs">Add New Client</span>
+            </Button>
+            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0" onClick={() => navigate("/admin/services")}>
+              <Package className="h-5 w-5 text-muted-foreground" />
+              <span className="text-xs">View Service Catalog</span>
+            </Button>
+            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0" onClick={() => navigate("/admin/pricing")}>
+              <DollarSign className="h-5 w-5 text-muted-foreground" />
+              <span className="text-xs">Manage Pricing</span>
+            </Button>
+            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0" onClick={() => navigate("/admin/billing")}>
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              <span className="text-xs">Generate Invoice</span>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Service Catalog with Lock State */}
+      <AdminServiceCatalog primaryColor={primaryColor} />
+
+      {/* Charts Row */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        {/* Service Usage Chart */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Service Usage This Month</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {serviceUsage.length > 0 ? (
+              <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                <BarChart data={serviceUsage} layout="vertical" margin={{ left: 20, right: 30 }}>
+                  <XAxis type="number" />
+                  <YAxis type="category" dataKey="service_name" width={120} tick={{ fontSize: 12 }} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="usage_count" fill={primaryColor} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <p className="text-sm text-muted-foreground py-10 text-center">No service usage data yet.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Revenue Trend Chart */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Revenue Trend (Last 30 Days)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartConfig} className="h-[250px] w-full">
+              <AreaChart data={revenueTrend} margin={{ left: 10, right: 10 }}>
+                <defs>
+                  <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={primaryColor} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={primaryColor} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10 }}
+                  tickFormatter={(v) => format(new Date(v), "MMM d")}
+                />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `₹${v}`} />
+                <ChartTooltip
+                  content={<ChartTooltipContent />}
+                  labelFormatter={(v) => format(new Date(v), "MMM d, yyyy")}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke={primaryColor}
+                  fill="url(#revenueGradient)"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Dashboard Widgets */}
+      <DashboardWidgets />
+
+      {/* Recent Clients - Table on desktop, Cards on mobile */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-lg">Recent Clients</CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => navigate("/admin/clients")}>
+            View All <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {recentClients.length > 0 ? (
+            <>
+              {/* Mobile: Card layout */}
+              <div className="space-y-3 md:hidden">
+                {recentClients.map((client) => (
+                  <div
+                    key={client.id}
+                    className="rounded-lg border p-4 space-y-2 active:bg-muted/50 transition-colors"
+                    onClick={() => navigate(`/admin/clients/${client.id}`)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-sm">{client.company_name}</p>
+                      <Badge variant={client.is_active ? "default" : "destructive"} className="text-[10px]">
+                        {client.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {client.contact_name || "—"} · {client.contact_email || "—"}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary" className="text-[10px]">{client.active_services} Services</Badge>
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => navigate(`/admin/clients/${client.id}`)}>
+                          <Eye className="h-3.5 w-3.5 mr-1" /> View
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setEditClientId(client.id)}>
+                          <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Desktop: Table layout */}
+              <Table className="hidden md:table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Company</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead className="hidden lg:table-cell">Email</TableHead>
+                    <TableHead>Services</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentClients.map((client) => (
+                    <TableRow
+                      key={client.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/admin/clients/${client.id}`)}
+                    >
+                      <TableCell className="font-medium">{client.company_name}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {client.contact_name || "—"}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground text-xs">
+                        {client.contact_email || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{client.active_services}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={client.is_active ? "default" : "destructive"}>
+                          {client.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8"
+                            onClick={() => navigate(`/admin/clients/${client.id}`)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8"
+                            onClick={() => setEditClientId(client.id)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground py-6 text-center">No clients yet.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit Client Modal */}
+      {editClientId && (() => {
+        const c = recentClients.find(rc => rc.id === editClientId);
+        if (!c) return null;
+        const clientData = {
+          id: c.id,
+          company_name: c.company_name,
+          industry: null as string | null,
+          company_size: null as string | null,
+          is_active: c.is_active,
+          user_id: c.user_id,
+          allow_admin_raw_access: null as boolean | null,
+          profile: {
+            email: c.contact_email || "",
+            full_name: c.contact_name,
+            phone: null as string | null,
+          },
+        };
+        return (
+          <ClientFormModal
+            open={!!editClientId}
+            onOpenChange={(open) => { if (!open) setEditClientId(null); }}
+            client={clientData}
+            onSuccess={() => { setEditClientId(null); fetchAllData(); }}
+          />
+        );
+      })()}
+    </div>
+  );
+}
+
+/* ---------- Admin Service Catalog ---------- */
+function AdminServiceCatalog({ primaryColor }: { primaryColor: string }) {
+  const { services, loading } = useAdminServices();
+  const navigate = useNavigate();
+
+  if (loading) {
+    return (
+      <div>
+        <h2 className="text-lg font-semibold text-foreground mb-4">Service Catalog</h2>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40" />)}
+        </div>
+      </div>
+    );
+  }
+
+  const unlocked = services.filter((s) => !s.is_locked);
+  const locked = services.filter((s) => s.is_locked);
+
+  const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+    voice: { label: "Voice", icon: Phone, color: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" },
+    messaging: { label: "Messaging", icon: MessageSquareIcon, color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" },
+    social_media: { label: "Social Media", icon: Share2Icon, color: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300" },
+  };
+
+  const handleOpen = (slug: string) => {
+    const routeSlug = SERVICE_ROUTE_MAP[slug];
+    if (!routeSlug) {
+      return;
+    }
+    navigate(`/admin/${routeSlug}`);
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-foreground mb-4">
+        Service Catalog
+        <Badge variant="secondary" className="ml-2">{unlocked.length} enabled</Badge>
+      </h2>
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        {unlocked.map((s) => {
+          const catConf = CATEGORY_CONFIG[s.category];
+          const CatIcon = catConf?.icon || PackageIcon;
+          return (
+            <Card key={s.id} className="flex flex-col hover-lift cursor-pointer" onClick={() => handleOpen(s.slug)}>
+              <CardContent className="pt-6 space-y-3 flex-1">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg shrink-0" style={{ backgroundColor: `${primaryColor}15` }}>
+                    {s.icon_url ? <img src={s.icon_url} alt="" className="h-6 w-6 object-contain" /> : <CatIcon className="h-5 w-5" style={{ color: primaryColor }} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground truncate">{s.name}</p>
+                    <Badge variant="outline" className={cn("text-[10px] capitalize mt-0.5", catConf?.color || "")}>
+                      {catConf?.label || s.category}
+                    </Badge>
+                  </div>
+                </div>
+                {s.description && <p className="text-xs text-muted-foreground line-clamp-2">{s.description}</p>}
+                <Button size="sm" className="w-full text-white" style={{ backgroundColor: primaryColor }}>
+                  Open Dashboard <ArrowRight className="ml-1 h-3 w-3" />
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {locked.map((s) => {
+          const catConf = CATEGORY_CONFIG[s.category];
+          const CatIcon = catConf?.icon || PackageIcon;
+          return (
+            <Card key={s.id} className="flex flex-col opacity-70 border-dashed relative overflow-hidden">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[2px]">
+                <div className="rounded-full bg-muted p-3"><Lock className="h-5 w-5 text-muted-foreground" /></div>
+              </div>
+              <CardContent className="pt-6 space-y-3 flex-1">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg shrink-0" style={{ backgroundColor: `${primaryColor}15` }}>
+                    <CatIcon className="h-5 w-5" style={{ color: primaryColor }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground truncate">{s.name}</p>
+                    <Badge variant="outline" className={cn("text-[10px] capitalize mt-0.5", catConf?.color || "")}>
+                      {catConf?.label || s.category}
+                    </Badge>
+                  </div>
+                </div>
+                {s.description && <p className="text-xs text-muted-foreground line-clamp-2">{s.description}</p>}
+                <Badge variant="secondary" className="text-xs"><Lock className="mr-1 h-3 w-3" />Not Available</Badge>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Stats Card Component ---------- */
+function StatsCard({
+  icon, iconColor, label, value, subtext, linkText, onLinkClick, trend,
+}: {
+  icon: React.ReactNode;
+  iconColor: string;
+  label: string;
+  value: string | number;
+  subtext: string;
+  linkText?: string;
+  onLinkClick?: () => void;
+  trend?: number;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
+        <div className="rounded-md p-2" style={{ backgroundColor: `${iconColor}15`, color: iconColor }}>
+          {icon}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-2xl font-bold">{value}</p>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-xs text-muted-foreground">{subtext}</p>
+          {trend !== undefined && (
+            <span className={`text-xs font-medium ${trend >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {trend >= 0 ? "+" : ""}{trend}%
+            </span>
+          )}
+          {linkText && onLinkClick && (
+            <button onClick={onLinkClick} className="text-xs font-medium text-primary hover:underline">
+              {linkText}
+            </button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ---------- Skeleton Loader ---------- */
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <Skeleton className="h-8 w-64 mb-2" />
+        <Skeleton className="h-4 w-40" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <Card key={i}>
+            <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+            <CardContent><Skeleton className="h-8 w-16" /><Skeleton className="h-3 w-20 mt-2" /></CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card><CardContent className="pt-6"><Skeleton className="h-[250px] w-full" /></CardContent></Card>
+        <Card><CardContent className="pt-6"><Skeleton className="h-[250px] w-full" /></CardContent></Card>
+      </div>
+      <Card><CardContent className="pt-6"><Skeleton className="h-40 w-full" /></CardContent></Card>
+    </div>
+  );
+}

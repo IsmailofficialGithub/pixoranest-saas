@@ -1,0 +1,277 @@
+{
+  "name": "Social Media Multi-Platform Posting",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "social-media-post",
+        "responseMode": "immediately",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "social-media-post"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst platforms = body.platforms || [];\nreturn platforms.map(p => ({\n  platform: p,\n  post_id: body.post_id,\n  client_id: body.client_id,\n  workflow_instance_id: body.workflow_instance_id,\n  content: body.content,\n  media_urls: body.media_urls || [],\n  hashtags: body.hashtags || [],\n  post_type: body.post_type || 'text'\n}));"
+      },
+      "id": "expand-platforms",
+      "name": "Expand Platforms",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": { "reset": true }
+      },
+      "id": "split-platforms",
+      "name": "Split By Platform",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst platform = item.platform;\n\nconst fullContent = item.content + (item.hashtags.length ? '\\n\\n' + item.hashtags.join(' ') : '');\n\nreturn {\n  ...item,\n  full_content: fullContent,\n  has_media: item.media_urls && item.media_urls.length > 0\n};"
+      },
+      "id": "prepare-post",
+      "name": "Prepare Post",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "notes": "Merges content with hashtags and flags media presence."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "outputKey": "facebook", "value1": "={{ $json.platform }}", "value2": "facebook" },
+            { "outputKey": "instagram", "value1": "={{ $json.platform }}", "value2": "instagram" },
+            { "outputKey": "linkedin", "value1": "={{ $json.platform }}", "value2": "linkedin" },
+            { "outputKey": "twitter", "value1": "={{ $json.platform }}", "value2": "twitter" }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "switch-platform",
+      "name": "Switch Platform",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/{{ $json.page_id || 'PAGE_ID' }}/feed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"{{ $json.full_content }}\",\n  \"access_token\": \"{{ $json.facebook_token || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "post-facebook",
+      "name": "Post to Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 100],
+      "continueOnFail": true,
+      "notes": "Requires facebook_page_id and facebook_access_token in custom_config"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/{{ $json.instagram_account_id || 'IG_ID' }}/media",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"image_url\": \"{{ $json.media_urls[0] || '' }}\",\n  \"caption\": \"{{ $json.full_content }}\",\n  \"access_token\": \"{{ $json.instagram_token || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "post-instagram-container",
+      "name": "Create IG Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 250],
+      "continueOnFail": true,
+      "notes": "Instagram requires media. Creates container, then publish in next node."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/{{ $('Prepare Post').first().json.instagram_account_id || 'IG_ID' }}/media_publish",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"creation_id\": \"{{ $json.id }}\",\n  \"access_token\": \"{{ $('Prepare Post').first().json.instagram_token || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "post-instagram-publish",
+      "name": "Publish IG Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 250],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/v2/ugcPosts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Restli-Protocol-Version", "value": "2.0.0" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"author\": \"urn:li:person:{{ $json.linkedin_person_id || '' }}\",\n  \"lifecycleState\": \"PUBLISHED\",\n  \"specificContent\": {\n    \"com.linkedin.ugc.ShareContent\": {\n      \"shareCommentary\": { \"text\": \"{{ $json.full_content }}\" },\n      \"shareMediaCategory\": \"{{ $json.has_media ? 'IMAGE' : 'NONE' }}\"\n    }\n  },\n  \"visibility\": { \"com.linkedin.ugc.MemberNetworkVisibility\": \"PUBLIC\" }\n}",
+        "options": {}
+      },
+      "id": "post-linkedin",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 400],
+      "continueOnFail": true,
+      "notes": "Requires linkedin_person_id and linkedin_access_token in custom_config. Use HTTP Header Auth credential."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/tweets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"{{ $json.full_content.substring(0, 280) }}\"\n}",
+        "options": {}
+      },
+      "id": "post-twitter",
+      "name": "Post to Twitter/X",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 550],
+      "continueOnFail": true,
+      "notes": "Requires twitter OAuth 2.0 Bearer Token via HTTP Header Auth credential. Content truncated to 280 chars."
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.item.json;\nconst prepared = $('Prepare Post').first().json;\n\nconst externalId = result?.id || result?.data?.id || null;\nconst failed = !externalId && (result?.error || result?.detail);\n\nreturn {\n  post_id: prepared.post_id,\n  client_id: prepared.client_id,\n  workflow_instance_id: prepared.workflow_instance_id,\n  platform: prepared.platform,\n  external_id: externalId,\n  status: failed ? 'failed' : 'posted',\n  error_message: failed ? (result?.error?.message || result?.detail || 'Post failed') : null,\n  posted_at: failed ? null : new Date().toISOString()\n};"
+      },
+      "id": "process-result",
+      "name": "Process Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ukxoyojiztuvaqgslegw.supabase.co/rest/v1/rpc/increment_usage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_client_id\": \"{{ $json.client_id }}\",\n  \"p_service_slug\": \"social-media-automation\",\n  \"p_amount\": 1\n}",
+        "options": {}
+      },
+      "id": "update-usage",
+      "name": "Update Usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2020, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "id": "loop-back",
+      "name": "Loop Back",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Webhook Trigger').first().json.body || $('Webhook Trigger').first().json;\nreturn {\n  post_id: body.post_id,\n  client_id: body.client_id,\n  platforms: body.platforms,\n  status: 'completed'\n};"
+      },
+      "id": "all-done",
+      "name": "All Platforms Done",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 520]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Expand Platforms", "type": "main", "index": 0 }]]
+    },
+    "Expand Platforms": {
+      "main": [[{ "node": "Split By Platform", "type": "main", "index": 0 }]]
+    },
+    "Split By Platform": {
+      "main": [
+        [{ "node": "Prepare Post", "type": "main", "index": 0 }],
+        [{ "node": "All Platforms Done", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Post": {
+      "main": [[{ "node": "Switch Platform", "type": "main", "index": 0 }]]
+    },
+    "Switch Platform": {
+      "main": [
+        [{ "node": "Post to Facebook", "type": "main", "index": 0 }],
+        [{ "node": "Create IG Container", "type": "main", "index": 0 }],
+        [{ "node": "Post to LinkedIn", "type": "main", "index": 0 }],
+        [{ "node": "Post to Twitter/X", "type": "main", "index": 0 }]
+      ]
+    },
+    "Post to Facebook": {
+      "main": [[{ "node": "Process Result", "type": "main", "index": 0 }]]
+    },
+    "Create IG Container": {
+      "main": [[{ "node": "Publish IG Post", "type": "main", "index": 0 }]]
+    },
+    "Publish IG Post": {
+      "main": [[{ "node": "Process Result", "type": "main", "index": 0 }]]
+    },
+    "Post to LinkedIn": {
+      "main": [[{ "node": "Process Result", "type": "main", "index": 0 }]]
+    },
+    "Post to Twitter/X": {
+      "main": [[{ "node": "Process Result", "type": "main", "index": 0 }]]
+    },
+    "Process Result": {
+      "main": [[{ "node": "Update Usage", "type": "main", "index": 0 }]]
+    },
+    "Update Usage": {
+      "main": [[{ "node": "Loop Back", "type": "main", "index": 0 }]]
+    },
+    "Loop Back": {
+      "main": [[{ "node": "Split By Platform", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionTimeout": 3600,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "retry": { "enabled": true, "maxTries": 3, "waitBetweenTries": 5000 }
+  },
+  "tags": [{ "name": "social-media" }, { "name": "posting" }, { "name": "template" }],
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "notes": "Social Media Multi-Platform Posting Template.\n\nSetup:\n1. Import into n8n\n2. Configure HTTP Header Auth credentials for each platform\n3. Set env vars: SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY\n4. Activate and copy webhook URL\n5. Store webhook URL in client_workflow_instances.webhook_url\n\nPlatform credentials (stored in custom_config):\n- Facebook: facebook_page_id, facebook_access_token\n- Instagram: instagram_account_id, instagram_token\n- LinkedIn: linkedin_person_id, linkedin_access_token\n- Twitter: twitter_access_token (OAuth 2.0)\n\nTest payload:\n{\n  \"post_id\": \"test-post-id\",\n  \"client_id\": \"test-client\",\n  \"workflow_instance_id\": \"test-instance\",\n  \"platforms\": [\"facebook\"],\n  \"content\": \"Hello from automation!\",\n  \"media_urls\": [],\n  \"hashtags\": [\"#test\"],\n  \"post_type\": \"text\"\n}"
+  }
+}

@@ -1,0 +1,250 @@
+{
+  "name": "Social Media Fetch Engagement Metrics",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] }
+      },
+      "id": "cron-trigger",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ukxoyojiztuvaqgslegw.supabase.co/rest/v1/social_media_posts?status=eq.posted&posted_at=gte.{{ new Date(Date.now() - 7*24*60*60*1000).toISOString() }}&select=id,platform,platform_post_ids,client_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-recent-posts",
+      "name": "Fetch Recent Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": { "reset": true }
+      },
+      "id": "split-posts",
+      "name": "Split Posts",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "rate-limit",
+      "name": "Rate Limit",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const post = $input.item.json;\nconst platform = post.platform;\nconst ids = post.platform_post_ids || {};\nconst externalId = ids[platform] || ids.id || null;\n\nreturn {\n  post_id: post.id,\n  client_id: post.client_id,\n  platform,\n  external_id: externalId\n};"
+      },
+      "id": "prepare-fetch",
+      "name": "Prepare Fetch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "outputKey": "facebook", "value1": "={{ $json.platform }}", "value2": "facebook" },
+            { "outputKey": "instagram", "value1": "={{ $json.platform }}", "value2": "instagram" },
+            { "outputKey": "linkedin", "value1": "={{ $json.platform }}", "value2": "linkedin" },
+            { "outputKey": "twitter", "value1": "={{ $json.platform }}", "value2": "twitter" }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "switch-platform",
+      "name": "Switch Platform",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v18.0/{{ $json.external_id }}?fields=likes.summary(true),comments.summary(true),shares",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "fb-metrics",
+      "name": "Facebook Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 100],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v18.0/{{ $json.external_id }}?fields=like_count,comments_count",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ig-metrics",
+      "name": "Instagram Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 250],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.linkedin.com/v2/socialActions/{{ $json.external_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "X-Restli-Protocol-Version", "value": "2.0.0" }]
+        },
+        "options": {}
+      },
+      "id": "li-metrics",
+      "name": "LinkedIn Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.twitter.com/2/tweets/{{ $json.external_id }}?tweet.fields=public_metrics",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "tw-metrics",
+      "name": "Twitter Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 550],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.item.json;\nconst prepared = $('Prepare Fetch').first().json;\n\nlet stats = { likes: 0, comments: 0, shares: 0 };\n\nswitch (prepared.platform) {\n  case 'facebook':\n    stats.likes = result?.likes?.summary?.total_count || 0;\n    stats.comments = result?.comments?.summary?.total_count || 0;\n    stats.shares = result?.shares?.count || 0;\n    break;\n  case 'instagram':\n    stats.likes = result?.like_count || 0;\n    stats.comments = result?.comments_count || 0;\n    break;\n  case 'linkedin':\n    stats.likes = result?.likesSummary?.totalLikes || 0;\n    stats.comments = result?.commentsSummary?.totalFirstLevelComments || 0;\n    break;\n  case 'twitter':\n    const pm = result?.data?.public_metrics || {};\n    stats.likes = pm.like_count || 0;\n    stats.comments = pm.reply_count || 0;\n    stats.shares = pm.retweet_count || 0;\n    break;\n}\n\nreturn {\n  post_id: prepared.post_id,\n  engagement_stats: stats\n};"
+      },
+      "id": "normalize-metrics",
+      "name": "Normalize Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ukxoyojiztuvaqgslegw.supabase.co/rest/v1/social_media_posts?id=eq.{{ $json.post_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"engagement_stats\": {{ JSON.stringify($json.engagement_stats) }}\n}",
+        "options": {}
+      },
+      "id": "save-metrics",
+      "name": "Save Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2020, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "id": "loop-back",
+      "name": "Next Post",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2240, 300]
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [[{ "node": "Fetch Recent Posts", "type": "main", "index": 0 }]]
+    },
+    "Fetch Recent Posts": {
+      "main": [[{ "node": "Split Posts", "type": "main", "index": 0 }]]
+    },
+    "Split Posts": {
+      "main": [
+        [{ "node": "Rate Limit", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Rate Limit": {
+      "main": [[{ "node": "Prepare Fetch", "type": "main", "index": 0 }]]
+    },
+    "Prepare Fetch": {
+      "main": [[{ "node": "Switch Platform", "type": "main", "index": 0 }]]
+    },
+    "Switch Platform": {
+      "main": [
+        [{ "node": "Facebook Metrics", "type": "main", "index": 0 }],
+        [{ "node": "Instagram Metrics", "type": "main", "index": 0 }],
+        [{ "node": "LinkedIn Metrics", "type": "main", "index": 0 }],
+        [{ "node": "Twitter Metrics", "type": "main", "index": 0 }]
+      ]
+    },
+    "Facebook Metrics": {
+      "main": [[{ "node": "Normalize Metrics", "type": "main", "index": 0 }]]
+    },
+    "Instagram Metrics": {
+      "main": [[{ "node": "Normalize Metrics", "type": "main", "index": 0 }]]
+    },
+    "LinkedIn Metrics": {
+      "main": [[{ "node": "Normalize Metrics", "type": "main", "index": 0 }]]
+    },
+    "Twitter Metrics": {
+      "main": [[{ "node": "Normalize Metrics", "type": "main", "index": 0 }]]
+    },
+    "Normalize Metrics": {
+      "main": [[{ "node": "Save Metrics", "type": "main", "index": 0 }]]
+    },
+    "Save Metrics": {
+      "main": [[{ "node": "Next Post", "type": "main", "index": 0 }]]
+    },
+    "Next Post": {
+      "main": [[{ "node": "Split Posts", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionTimeout": 3600,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true
+  },
+  "tags": [{ "name": "social-media" }, { "name": "metrics" }, { "name": "cron" }],
+  "meta": {
+    "notes": "Social Media Engagement Metrics Fetcher.\n\nRuns every 6 hours, fetches engagement stats for posts from the last 7 days, and updates the engagement_stats JSONB field.\n\nSetup:\n1. Import into n8n\n2. Configure HTTP Header Auth credentials for each platform API\n3. Set env vars: SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY\n4. Activate workflow"
+  }
+}

@@ -1,0 +1,511 @@
+{
+  "name": "Voice Receptionist IVR - Template",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "receptionist-incoming-{{workflow_instance_id}}",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Incoming Call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "receptionist-incoming"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ukxoyojiztuvaqgslegw.supabase.co/rest/v1/client_workflow_instances?id=eq.{{ $json.workflow_instance_id }}&select=id,client_id,service_id,custom_config,webhook_url",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Accept", "value": "application/vnd.pqrs.object+json" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-config",
+      "name": "Get Receptionist Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $input.item.json.custom_config || {};\nconst now = new Date();\nconst currentDay = now.getDay();\nconst currentHour = now.getHours();\nconst currentMinute = now.getMinutes();\n\nconst businessHours = config.business_hours || {};\nconst dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];\nconst today = dayNames[currentDay];\nconst todayHours = businessHours[today];\n\nif (!todayHours || !todayHours.isOpen) {\n  return {\n    isOpen: false,\n    afterHoursAction: config.after_hours_action || 'voicemail',\n    afterHoursMessage: config.after_hours_message || \"We're currently closed. Please leave a message after the beep.\",\n    config: config,\n    client_id: $input.item.json.client_id,\n    service_id: $input.item.json.service_id\n  };\n}\n\nconst [openH, openM] = todayHours.from.split(':').map(Number);\nconst [closeH, closeM] = todayHours.to.split(':').map(Number);\nconst curMin = currentHour * 60 + currentMinute;\nconst isOpen = curMin >= (openH * 60 + openM) && curMin < (closeH * 60 + closeM);\n\nreturn {\n  isOpen,\n  afterHoursAction: config.after_hours_action || 'voicemail',\n  afterHoursMessage: config.after_hours_message || \"We're currently closed.\",\n  config: config,\n  client_id: $input.item.json.client_id,\n  service_id: $input.item.json.service_id\n};"
+      },
+      "id": "check-hours",
+      "name": "Check Business Hours",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "is-open",
+              "leftValue": "={{ $json.isOpen }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "route-hours",
+      "name": "Business Hours?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Check Business Hours').first().json.config;\nconst callData = $('Incoming Call').first().json.body || $('Incoming Call').first().json;\n\n// Check if caller is a known contact\nconst fromNumber = callData.from_number || '';\nconst knownCallers = config.known_callers || {};\nconst caller = knownCallers[fromNumber.replace(/\\+/g, '')];\n\nlet greeting = config.welcome_message || 'Thank you for calling.';\nif (caller) {\n  greeting = `Welcome back, ${caller.name}. ${greeting}`;\n}\n\nconst ivrMenu = config.ivr_menu || {};\nlet menuText = greeting + ' ';\n\nif (ivrMenu.options && ivrMenu.options.length > 0) {\n  menuText += 'Please select from the following options: ';\n  ivrMenu.options.forEach(opt => {\n    menuText += `Press ${opt.digit} for ${opt.label}. `;\n  });\n}\nmenuText += 'Press 0 to speak with an operator.';\n\nreturn {\n  menuText,\n  options: ivrMenu.options || [],\n  timeout: ivrMenu.timeout || 10,\n  callerName: caller ? caller.name : null,\n  isVip: caller ? (caller.vip || false) : false\n};"
+      },
+      "id": "build-ivr",
+      "name": "Build IVR Menu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check Business Hours').first().json.config.telephony_api_url }}/calls/{{ $('Incoming Call').first().json.body.call_id || $('Incoming Call').first().json.call_id }}/gather",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Check Business Hours').first().json.config.telephony_api_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify($json.menuText) }},\n  \"voice\": \"female\",\n  \"language\": \"en-US\",\n  \"num_digits\": 1,\n  \"timeout\": {{ $json.timeout }}\n}",
+        "options": {}
+      },
+      "id": "play-ivr",
+      "name": "Play IVR & Gather Input",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const digit = ($json.digit || $json.Digits || '').toString();\nconst options = $('Build IVR Menu').first().json.options;\nconst config = $('Check Business Hours').first().json.config;\n\nif (!digit || digit === '') {\n  return { action: 'timeout', message: 'No input received. Transferring to operator.', digit: 'timeout' };\n}\n\nif (digit === '0') {\n  return {\n    action: 'forward',\n    actionData: { phoneNumber: config.operator_number || config.default_forward_number },\n    message: 'Connecting you to an operator.',\n    digit: '0'\n  };\n}\n\nconst option = options.find(o => o.digit.toString() === digit);\nif (!option) {\n  return { action: 'invalid', message: 'Invalid selection. Please try again.', digit };\n}\n\nreturn {\n  action: option.action,\n  actionData: option.actionData || {},\n  message: option.message || `You selected ${option.label}.`,\n  digit,\n  label: option.label\n};"
+      },
+      "id": "process-input",
+      "name": "Process Menu Selection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "outputKey": "forward", "value1": "={{ $json.action }}", "value2": "forward" },
+            { "outputKey": "voicemail", "value1": "={{ $json.action }}", "value2": "voicemail" },
+            { "outputKey": "message", "value1": "={{ $json.action }}", "value2": "message" },
+            { "outputKey": "timeout", "value1": "={{ $json.action }}", "value2": "timeout" }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "action-switch",
+      "name": "Action Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check Business Hours').first().json.config.telephony_api_url }}/calls/{{ $('Incoming Call').first().json.body.call_id || $('Incoming Call').first().json.call_id }}/transfer",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Check Business Hours').first().json.config.telephony_api_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": {{ JSON.stringify($json.actionData.phoneNumber) }},\n  \"timeout\": 30,\n  \"record\": true,\n  \"announcement\": {{ JSON.stringify($json.message) }}\n}",
+        "options": {}
+      },
+      "id": "forward-call",
+      "name": "Forward Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2040, 100],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const transferResult = $json;\nconst forwarded = transferResult.status === 'answered' || transferResult.status === 'connected';\n\nreturn {\n  status: forwarded ? 'completed' : 'no_answer',\n  forwarded_to: $('Process Menu Selection').first().json.actionData?.phoneNumber || '',\n  ivr_path: `digit:${$('Process Menu Selection').first().json.digit} -> forward`,\n  duration: transferResult.duration || 0,\n  recording_url: transferResult.recording_url || null,\n  needs_voicemail: !forwarded\n};"
+      },
+      "id": "check-forward",
+      "name": "Check Forward Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2260, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check Business Hours').first().json.config.telephony_api_url }}/calls/{{ $('Incoming Call').first().json.body.call_id || $('Incoming Call').first().json.call_id }}/record",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Check Business Hours').first().json.config.telephony_api_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"announcement\": \"Please leave a message after the beep. Press # when finished.\",\n  \"max_duration\": 120,\n  \"beep\": true\n}",
+        "options": {}
+      },
+      "id": "record-voicemail",
+      "name": "Record Voicemail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2040, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  status: 'voicemail',\n  recording_url: $json.recording_url || null,\n  transcript: $json.transcript || null,\n  duration: $json.duration || 0,\n  ivr_path: 'voicemail',\n  forwarded_to: null\n};"
+      },
+      "id": "process-voicemail",
+      "name": "Process Voicemail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check Business Hours').first().json.config.telephony_api_url }}/calls/{{ $('Incoming Call').first().json.body.call_id || $('Incoming Call').first().json.call_id }}/play",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Check Business Hours').first().json.config.telephony_api_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify($json.message || $json.actionData?.message || 'Thank you for your inquiry.') }},\n  \"voice\": \"female\",\n  \"language\": \"en-US\"\n}",
+        "options": {}
+      },
+      "id": "play-message",
+      "name": "Play Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2040, 480],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  status: 'completed',\n  ivr_path: `digit:${$('Process Menu Selection').first().json.digit} -> message`,\n  duration: $json.duration || 0,\n  recording_url: null,\n  forwarded_to: null\n};"
+      },
+      "id": "message-done",
+      "name": "Message Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2260, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// After-hours: play message then route to voicemail or forward\nconst hrs = $('Check Business Hours').first().json;\nreturn {\n  afterHoursAction: hrs.afterHoursAction,\n  afterHoursMessage: hrs.afterHoursMessage,\n  client_id: hrs.client_id,\n  service_id: hrs.service_id\n};"
+      },
+      "id": "after-hours-prep",
+      "name": "After Hours Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 560]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check Business Hours').first().json.config.telephony_api_url }}/calls/{{ $('Incoming Call').first().json.body.call_id || $('Incoming Call').first().json.call_id }}/play",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Check Business Hours').first().json.config.telephony_api_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify($json.afterHoursMessage) }},\n  \"voice\": \"female\",\n  \"language\": \"en-US\"\n}",
+        "options": {}
+      },
+      "id": "play-after-hours",
+      "name": "Play After Hours Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 560],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "outputKey": "voicemail", "value1": "={{ $('After Hours Prep').first().json.afterHoursAction }}", "value2": "voicemail" },
+            { "outputKey": "forward", "value1": "={{ $('After Hours Prep').first().json.afterHoursAction }}", "value2": "forward_emergency" }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "after-hours-switch",
+      "name": "After Hours Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1580, 560]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check Business Hours').first().json.config.telephony_api_url }}/calls/{{ $('Incoming Call').first().json.body.call_id || $('Incoming Call').first().json.call_id }}/record",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Check Business Hours').first().json.config.telephony_api_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"announcement\": \"Please leave a message after the beep. Press # when finished.\",\n  \"max_duration\": 120,\n  \"beep\": true\n}",
+        "options": {}
+      },
+      "id": "after-hours-voicemail",
+      "name": "After Hours Voicemail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 520],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Check Business Hours').first().json.config.telephony_api_url }}/calls/{{ $('Incoming Call').first().json.body.call_id || $('Incoming Call').first().json.call_id }}/transfer",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Check Business Hours').first().json.config.telephony_api_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": {{ JSON.stringify($('Check Business Hours').first().json.config.emergency_forward_number || '') }},\n  \"timeout\": 30\n}",
+        "options": {}
+      },
+      "id": "emergency-forward",
+      "name": "Emergency Forward",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 680],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge all result paths into a unified call log entry\nconst callData = $('Incoming Call').first().json.body || $('Incoming Call').first().json;\nconst hrs = $('Check Business Hours').first().json;\n\n// Determine which branch we came from\nlet status = 'completed';\nlet recording_url = null;\nlet transcript = null;\nlet ivr_path = '';\nlet forwarded_to = null;\nlet duration = 0;\n\ntry { const r = $json; status = r.status || status; recording_url = r.recording_url || null; transcript = r.transcript || null; ivr_path = r.ivr_path || ''; forwarded_to = r.forwarded_to || null; duration = r.duration || 0; } catch(e) {}\n\nreturn {\n  client_id: hrs.client_id,\n  service_id: hrs.service_id,\n  call_id: callData.call_id,\n  phone_number: callData.from_number,\n  call_type: 'inbound',\n  status,\n  duration_seconds: duration,\n  recording_url,\n  transcript,\n  metadata: { ivr_path, forwarded_to, business_hours: hrs.isOpen }\n};"
+      },
+      "id": "prepare-log",
+      "name": "Prepare Call Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2500, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://ukxoyojiztuvaqgslegw.supabase.co/rest/v1/call_logs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": {{ JSON.stringify($json.client_id) }},\n  \"service_id\": {{ JSON.stringify($json.service_id) }},\n  \"call_type\": \"inbound\",\n  \"phone_number\": {{ JSON.stringify($json.phone_number) }},\n  \"status\": {{ JSON.stringify($json.status) }},\n  \"duration_seconds\": {{ $json.duration_seconds }},\n  \"recording_url\": {{ JSON.stringify($json.recording_url) }},\n  \"transcript\": {{ JSON.stringify($json.transcript) }},\n  \"metadata\": {{ JSON.stringify($json.metadata) }}\n}",
+        "options": {}
+      },
+      "id": "save-log",
+      "name": "Save Call Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2720, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://ukxoyojiztuvaqgslegw.supabase.co/rest/v1/rpc/increment_usage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_client_id\": {{ JSON.stringify($('Prepare Call Log').first().json.client_id) }},\n  \"p_service_slug\": \"voice-receptionist\",\n  \"p_amount\": 1\n}",
+        "options": {}
+      },
+      "id": "update-usage",
+      "name": "Update Usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2940, 350],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://ukxoyojiztuvaqgslegw.supabase.co/rest/v1/notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": {{ JSON.stringify($('Prepare Call Log').first().json.client_id) }},\n  \"title\": \"Inbound Call\",\n  \"message\": \"Call from {{ $('Prepare Call Log').first().json.phone_number }} — {{ $('Prepare Call Log').first().json.status }}\",\n  \"type\": \"info\",\n  \"action_url\": \"/client/call-logs\"\n}",
+        "options": {}
+      },
+      "id": "send-notification",
+      "name": "Send Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2940, 460],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, call_id: $('Incoming Call').first().json.body?.call_id || $('Incoming Call').first().json.call_id }) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [3160, 400]
+    }
+  ],
+  "connections": {
+    "Incoming Call": {
+      "main": [[{ "node": "Get Receptionist Config", "type": "main", "index": 0 }]]
+    },
+    "Get Receptionist Config": {
+      "main": [[{ "node": "Check Business Hours", "type": "main", "index": 0 }]]
+    },
+    "Check Business Hours": {
+      "main": [[{ "node": "Business Hours?", "type": "main", "index": 0 }]]
+    },
+    "Business Hours?": {
+      "main": [
+        [{ "node": "Build IVR Menu", "type": "main", "index": 0 }],
+        [{ "node": "After Hours Prep", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build IVR Menu": {
+      "main": [[{ "node": "Play IVR & Gather Input", "type": "main", "index": 0 }]]
+    },
+    "Play IVR & Gather Input": {
+      "main": [[{ "node": "Process Menu Selection", "type": "main", "index": 0 }]]
+    },
+    "Process Menu Selection": {
+      "main": [[{ "node": "Action Router", "type": "main", "index": 0 }]]
+    },
+    "Action Router": {
+      "main": [
+        [{ "node": "Forward Call", "type": "main", "index": 0 }],
+        [{ "node": "Record Voicemail", "type": "main", "index": 0 }],
+        [{ "node": "Play Message", "type": "main", "index": 0 }],
+        [{ "node": "Forward Call", "type": "main", "index": 0 }],
+        [{ "node": "Record Voicemail", "type": "main", "index": 0 }]
+      ]
+    },
+    "Forward Call": {
+      "main": [[{ "node": "Check Forward Result", "type": "main", "index": 0 }]]
+    },
+    "Check Forward Result": {
+      "main": [[{ "node": "Prepare Call Log", "type": "main", "index": 0 }]]
+    },
+    "Record Voicemail": {
+      "main": [[{ "node": "Process Voicemail", "type": "main", "index": 0 }]]
+    },
+    "Process Voicemail": {
+      "main": [[{ "node": "Prepare Call Log", "type": "main", "index": 0 }]]
+    },
+    "Play Message": {
+      "main": [[{ "node": "Message Complete", "type": "main", "index": 0 }]]
+    },
+    "Message Complete": {
+      "main": [[{ "node": "Prepare Call Log", "type": "main", "index": 0 }]]
+    },
+    "After Hours Prep": {
+      "main": [[{ "node": "Play After Hours Message", "type": "main", "index": 0 }]]
+    },
+    "Play After Hours Message": {
+      "main": [[{ "node": "After Hours Action", "type": "main", "index": 0 }]]
+    },
+    "After Hours Action": {
+      "main": [
+        [{ "node": "After Hours Voicemail", "type": "main", "index": 0 }],
+        [{ "node": "Emergency Forward", "type": "main", "index": 0 }],
+        [{ "node": "Prepare Call Log", "type": "main", "index": 0 }]
+      ]
+    },
+    "After Hours Voicemail": {
+      "main": [[{ "node": "Process Voicemail", "type": "main", "index": 0 }]]
+    },
+    "Emergency Forward": {
+      "main": [[{ "node": "Check Forward Result", "type": "main", "index": 0 }]]
+    },
+    "Prepare Call Log": {
+      "main": [[{ "node": "Save Call Log", "type": "main", "index": 0 }]]
+    },
+    "Save Call Log": {
+      "main": [[{ "node": "Update Usage", "type": "main", "index": 0 }, { "node": "Send Notification", "type": "main", "index": 0 }]]
+    },
+    "Update Usage": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionTimeout": 120,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "tags": [{ "name": "voice" }, { "name": "receptionist" }, { "name": "ivr" }],
+  "meta": {
+    "notes": "Voice Receptionist IVR Workflow Template.\n\nHandles inbound calls with:\n- Business hours check\n- IVR menu with DTMF input\n- Call forwarding with fallback to voicemail\n- After-hours routing (voicemail / emergency forward / hangup)\n- Caller recognition for personalised greetings\n- Call logging, usage tracking & notifications\n\nSetup:\n1. Import into n8n\n2. Set env vars: SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY\n3. Configure client_workflow_instances.custom_config with:\n   - telephony_api_url, telephony_api_key\n   - business_hours, ivr_menu, welcome_message\n   - after_hours_action, after_hours_message\n   - operator_number, emergency_forward_number\n4. Activate workflow"
+  }
+}

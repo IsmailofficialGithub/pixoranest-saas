@@ -1,0 +1,25 @@
+project_id = "ukxoyojiztuvaqgslegw"
+
+[functions.manage-admin]
+verify_jwt = false
+
+[functions.clone-workflow-for-client]
+verify_jwt = false
+
+[functions.activate-client-workflow]
+verify_jwt = false
+
+[functions.manage-client]
+verify_jwt = false
+
+[functions.trigger-telecaller-campaign]
+verify_jwt = false
+
+[functions.handle-call-status]
+verify_jwt = false
+
+[functions.score-lead]
+verify_jwt = false
+
+[functions.store-logs]
+verify_jwt = false

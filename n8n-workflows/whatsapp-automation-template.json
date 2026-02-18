@@ -1,0 +1,163 @@
+{
+  "name": "WhatsApp Automation Campaign",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-campaign",
+        "responseMode": "immediately",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "whatsapp-campaign"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": { "reset": true }
+      },
+      "id": "split-contacts",
+      "name": "Split Contacts",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "rate-limiter",
+      "name": "Rate Limiter",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const contact = $input.item.json;\nconst campaign = $('Webhook Trigger').first().json.body;\n\nlet messageBody = campaign.message_content || '';\nmessageBody = messageBody.replace(/\\{name\\}/g, contact.name || 'there');\nmessageBody = messageBody.replace(/\\{phone\\}/g, contact.phone || '');\n\nif (contact.data && typeof contact.data === 'object') {\n  Object.keys(contact.data).forEach(key => {\n    const regex = new RegExp(`\\\\{${key}\\\\}`, 'g');\n    messageBody = messageBody.replace(regex, String(contact.data[key]));\n  });\n}\n\nlet payload = {\n  messaging_product: 'whatsapp',\n  recipient_type: 'individual',\n  to: contact.phone.replace('+', ''),\n  type: campaign.message_type || 'text'\n};\n\nif (campaign.message_type === 'text' || !campaign.message_type) {\n  payload.text = { preview_url: true, body: messageBody };\n} else if (campaign.message_type === 'template') {\n  payload.type = 'template';\n  payload.template = {\n    name: campaign.template_name,\n    language: { code: 'en' },\n    components: [{\n      type: 'body',\n      parameters: (campaign.template_variables || []).map(v => ({ type: 'text', text: v }))\n    }]\n  };\n} else if (campaign.message_type === 'media') {\n  const url = campaign.media_url || '';\n  const mediaType = url.match(/\\.(jpg|jpeg|png|gif)$/i) ? 'image' :\n                    url.match(/\\.(mp4|mov)$/i) ? 'video' : 'document';\n  payload.type = mediaType;\n  payload[mediaType] = { link: url, caption: campaign.media_caption || messageBody };\n}\n\nreturn {\n  contact_id: contact.id,\n  phone: contact.phone,\n  name: contact.name,\n  payload,\n  campaign_id: campaign.campaign_id,\n  client_id: campaign.client_id,\n  workflow_instance_id: campaign.workflow_instance_id,\n  message_type: campaign.message_type || 'text',\n  message_content: messageBody,\n  template_name: campaign.template_name || null,\n  media_url: campaign.media_url || null\n};"
+      },
+      "id": "prepare-message",
+      "name": "Prepare Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/{{ $('Webhook Trigger').first().json.body.phone_number_id || $json.phone_number_id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {}
+      },
+      "id": "send-whatsapp",
+      "name": "Send WhatsApp Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200],
+      "continueOnFail": true,
+      "notes": "Configure WhatsApp Business API credentials. The access token should be set via n8n HTTP Header Auth credential."
+    },
+    {
+      "parameters": {
+        "jsCode": "const sendResult = $input.item.json;\nconst prepared = $('Prepare Message').first().json;\n\nconst waMessageId = sendResult?.messages?.[0]?.id || null;\nconst failed = !waMessageId;\n\nreturn {\n  client_id: prepared.client_id,\n  workflow_instance_id: prepared.workflow_instance_id,\n  campaign_id: prepared.campaign_id,\n  phone_number: prepared.phone,\n  message_type: prepared.message_type,\n  message_content: prepared.message_content,\n  template_name: prepared.template_name,\n  media_url: prepared.media_url,\n  status: failed ? 'failed' : 'sent',\n  error_message: failed ? (sendResult?.error?.message || 'Send failed') : null,\n  wa_message_id: waMessageId,\n  sent_at: new Date().toISOString()\n};"
+      },
+      "id": "process-result",
+      "name": "Process Send Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ukxoyojiztuvaqgslegw.supabase.co/functions/v1/handle-whatsapp-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "send-to-supabase",
+      "name": "Log to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 200],
+      "notes": "Sends message result to handle-whatsapp-status edge function for logging and usage tracking."
+    },
+    {
+      "parameters": {},
+      "id": "loop-back",
+      "name": "Loop Back",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const campaign = $('Webhook Trigger').first().json.body;\nreturn {\n  campaign_id: campaign.campaign_id,\n  campaign_name: campaign.campaign_name,\n  client_id: campaign.client_id,\n  status: 'completed',\n  completed_at: new Date().toISOString()\n};"
+      },
+      "id": "campaign-completed",
+      "name": "Campaign Completed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 520]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Split Contacts", "type": "main", "index": 0 }]]
+    },
+    "Split Contacts": {
+      "main": [
+        [{ "node": "Rate Limiter", "type": "main", "index": 0 }],
+        [{ "node": "Campaign Completed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Rate Limiter": {
+      "main": [[{ "node": "Prepare Message", "type": "main", "index": 0 }]]
+    },
+    "Prepare Message": {
+      "main": [[{ "node": "Send WhatsApp Message", "type": "main", "index": 0 }]]
+    },
+    "Send WhatsApp Message": {
+      "main": [[{ "node": "Process Send Result", "type": "main", "index": 0 }]]
+    },
+    "Process Send Result": {
+      "main": [[{ "node": "Log to Supabase", "type": "main", "index": 0 }]]
+    },
+    "Log to Supabase": {
+      "main": [[{ "node": "Loop Back", "type": "main", "index": 0 }]]
+    },
+    "Loop Back": {
+      "main": [[{ "node": "Split Contacts", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionTimeout": 86400,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "retry": { "enabled": true, "maxTries": 3, "waitBetweenTries": 5000 }
+  },
+  "tags": [{ "name": "whatsapp" }, { "name": "campaign" }, { "name": "template" }],
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "notes": "WhatsApp Automation Campaign Workflow Template.\n\nSetup:\n1. Import into n8n\n2. Create HTTP Header Auth credential with WhatsApp Business API access token\n3. Set SUPABASE_ANON_KEY env variable in n8n\n4. Activate workflow and copy webhook URL\n5. Store webhook URL in client_workflow_instances.webhook_url\n\nCredentials needed:\n- WhatsApp Business API Access Token\n- WhatsApp Phone Number ID\n- Supabase Anon Key (env var)\n\nTest payload:\n{\n  \"campaign_id\": \"test-id\",\n  \"campaign_name\": \"Test WA Campaign\",\n  \"client_id\": \"test-client\",\n  \"workflow_instance_id\": \"test-instance\",\n  \"phone_number_id\": \"YOUR_PHONE_NUMBER_ID\",\n  \"message_type\": \"text\",\n  \"message_content\": \"Hello {name}!\",\n  \"contacts\": [{\"id\": \"c1\", \"phone\": \"+919876543210\", \"name\": \"Test\", \"data\": {}}]\n}"
+  }
+}

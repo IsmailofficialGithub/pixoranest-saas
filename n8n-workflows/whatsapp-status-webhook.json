@@ -1,0 +1,88 @@
+{
+  "name": "WhatsApp Status Webhook Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-status",
+        "responseMode": "immediately",
+        "options": {}
+      },
+      "id": "webhook-status",
+      "name": "Receive Status Update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "whatsapp-status"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\n\nconst results = [];\n\nif (body.entry) {\n  for (const entry of body.entry) {\n    for (const change of (entry.changes || [])) {\n      const statuses = change?.value?.statuses || [];\n      for (const s of statuses) {\n        results.push({\n          wa_message_id: s.id,\n          status: s.status,\n          timestamp: s.timestamp,\n          recipient: s.recipient_id,\n          delivered_at: s.status === 'delivered' ? new Date().toISOString() : null,\n          read_at: s.status === 'read' ? new Date().toISOString() : null,\n          error_code: s.errors?.[0]?.code || null,\n          error_message: s.errors?.[0]?.title || null\n        });\n      }\n    }\n  }\n}\n\nif (results.length === 0) {\n  results.push({ wa_message_id: null, status: 'unknown' });\n}\n\nreturn results;"
+      },
+      "id": "parse-statuses",
+      "name": "Parse Status Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [{ "value1": "={{ $json.wa_message_id }}", "operation": "isNotEmpty" }]
+        }
+      },
+      "id": "filter-valid",
+      "name": "Filter Valid",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ukxoyojiztuvaqgslegw.supabase.co/rest/v1/whatsapp_messages?metadata->>wa_message_id=eq.{{ $json.wa_message_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_ANON_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"{{ $json.status }}\",\n  \"delivered_at\": {{ $json.delivered_at ? '\"' + $json.delivered_at + '\"' : 'null' }},\n  \"read_at\": {{ $json.read_at ? '\"' + $json.read_at + '\"' : 'null' }},\n  \"error_message\": {{ $json.error_message ? '\"' + $json.error_message + '\"' : 'null' }}\n}",
+        "options": {}
+      },
+      "id": "update-message",
+      "name": "Update Message Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "continueOnFail": true,
+      "notes": "Updates whatsapp_messages table via Supabase REST API using wa_message_id stored in metadata."
+    }
+  ],
+  "connections": {
+    "Receive Status Update": {
+      "main": [[{ "node": "Parse Status Updates", "type": "main", "index": 0 }]]
+    },
+    "Parse Status Updates": {
+      "main": [[{ "node": "Filter Valid", "type": "main", "index": 0 }]]
+    },
+    "Filter Valid": {
+      "main": [[{ "node": "Update Message Status", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionTimeout": 300,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true
+  },
+  "tags": [{ "name": "whatsapp" }, { "name": "webhook" }, { "name": "status" }],
+  "meta": {
+    "notes": "WhatsApp Delivery Status Webhook Handler.\n\nSetup:\n1. Import into n8n and activate\n2. Copy webhook URL\n3. Register this URL as the webhook callback in Meta Developer Portal > WhatsApp > Configuration\n4. Set env vars: SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY\n\nThis workflow receives delivery/read status updates from WhatsApp Cloud API and updates the whatsapp_messages table accordingly."
+  }
+}

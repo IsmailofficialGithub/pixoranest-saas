@@ -1,0 +1,276 @@
+{
+  "name": "Voice Telecaller Campaign",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-telecaller",
+        "responseMode": "immediately",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "voice-telecaller"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": true
+        }
+      },
+      "id": "split-contacts",
+      "name": "Split Contact Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-between-calls",
+      "name": "Wait Between Calls",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const contact = $input.item.json;\nconst campaign = $('Webhook Trigger').first().json.body;\n\nlet personalizedScript = campaign.script || '';\npersonalizedScript = personalizedScript.replace(/\\{name\\}/g, contact.name || 'there');\npersonalizedScript = personalizedScript.replace(/\\{phone\\}/g, contact.phone || '');\n\nif (contact.data && typeof contact.data === 'object') {\n  Object.keys(contact.data).forEach(key => {\n    const regex = new RegExp(`\\\\{${key}\\\\}`, 'g');\n    personalizedScript = personalizedScript.replace(regex, String(contact.data[key]));\n  });\n}\n\nreturn {\n  contact_id: contact.id,\n  phone: contact.phone,\n  name: contact.name,\n  script: personalizedScript,\n  campaign_id: campaign.campaign_id,\n  client_id: campaign.client_id,\n  workflow_instance_id: campaign.workflow_instance_id,\n  voice_settings: campaign.voice_settings || {}\n};"
+      },
+      "id": "prepare-call-data",
+      "name": "Prepare Call Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.retellai.com/v2/create-phone-call",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"from_number\": \"{{ $json.voice_settings.from_number || '' }}\",\n  \"to_number\": \"{{ $json.phone }}\",\n  \"override_agent_id\": \"{{ $json.voice_settings.retell_agent_id || '' }}\",\n  \"retell_llm_dynamic_variables\": {\n    \"customer_name\": \"{{ $json.name }}\",\n    \"script\": \"{{ $json.script }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "make-call-retell",
+      "name": "Make Call via Retell AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200],
+      "continueOnFail": true,
+      "notes": "Replace with OmniDimension or Exotel/Twilio as needed. Configure credentials in n8n."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://ukxoyojiztuvaqgslegw.supabase.co/functions/v1/handle-call-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "send-to-supabase",
+      "name": "Send to Supabase Edge Function",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const callResult = $input.item.json;\nconst callData = $('Prepare Call Data').first().json;\n\nlet isLead = false;\nlet leadScore = 0;\n\nif (callResult.transcript) {\n  const transcript = callResult.transcript.toLowerCase();\n\n  const positiveKeywords = ['interested', 'yes', 'sure', 'tell me more', 'sounds good', 'send details', 'schedule'];\n  const negativeKeywords = ['not interested', 'no thanks', 'busy', 'remove', 'do not call', 'stop'];\n\n  positiveKeywords.forEach(keyword => {\n    if (transcript.includes(keyword)) {\n      leadScore += 20;\n      isLead = true;\n    }\n  });\n\n  negativeKeywords.forEach(keyword => {\n    if (transcript.includes(keyword)) leadScore -= 10;\n  });\n\n  if (callResult.duration_seconds > 60) leadScore += 10;\n  if (callResult.duration_seconds > 120) leadScore += 20;\n\n  leadScore = Math.max(0, Math.min(100, leadScore));\n}\n\nreturn {\n  contact_id: callData.contact_id,\n  phone_number: callData.phone,\n  name: callData.name,\n  campaign_id: callData.campaign_id,\n  client_id: callData.client_id,\n  workflow_instance_id: callData.workflow_instance_id,\n  call_status: callResult.call_status || callResult.status || 'completed',\n  duration_seconds: callResult.duration_seconds || callResult.duration || 0,\n  recording_url: callResult.recording_url || null,\n  transcript: callResult.transcript || null,\n  ai_summary: callResult.summary || callResult.ai_summary || null,\n  is_lead: isLead,\n  lead_score: leadScore\n};"
+      },
+      "id": "process-call-result",
+      "name": "Process Call Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.item.json;\nconst callData = $('Prepare Call Data').first().json;\n\nconsole.error('Call failed for contact:', callData.contact_id, error);\n\nreturn {\n  contact_id: callData.contact_id,\n  phone_number: callData.phone,\n  campaign_id: callData.campaign_id,\n  client_id: callData.client_id,\n  workflow_instance_id: callData.workflow_instance_id,\n  call_status: 'failed',\n  duration_seconds: 0,\n  recording_url: null,\n  transcript: null,\n  ai_summary: null,\n  is_lead: false,\n  lead_score: 0\n};"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 500],
+      "notes": "Handles failed calls and sends failure status to Supabase"
+    },
+    {
+      "parameters": {
+        "jsCode": "const campaign = $('Webhook Trigger').first().json.body;\n\nreturn {\n  campaign_id: campaign.campaign_id,\n  status: 'completed',\n  completed_at: new Date().toISOString(),\n  message: `Campaign '${campaign.campaign_name}' processing complete.`\n};"
+      },
+      "id": "campaign-completed",
+      "name": "Campaign Completed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 500],
+      "notes": "Runs after all contacts have been processed"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "call-status",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-call-status",
+      "name": "Wait for Call Completion",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [1120, 400],
+      "notes": "Optional: Use this as a separate sub-workflow if your telephony provider sends async callbacks. Otherwise, poll the API or use the response from the Make Call node directly."
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Split Contact Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Contact Loop": {
+      "main": [
+        [
+          {
+            "node": "Wait Between Calls",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Campaign Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Between Calls": {
+      "main": [
+        [
+          {
+            "node": "Prepare Call Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Call Data": {
+      "main": [
+        [
+          {
+            "node": "Make Call via Retell AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make Call via Retell AI": {
+      "main": [
+        [
+          {
+            "node": "Process Call Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Call Result": {
+      "main": [
+        [
+          {
+            "node": "Send to Supabase Edge Function",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Send to Supabase Edge Function",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Supabase Edge Function": {
+      "main": [
+        [
+          {
+            "node": "Split Contact Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionTimeout": 86400,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "retry": {
+      "enabled": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  },
+  "tags": [
+    {
+      "name": "voice-telecaller"
+    },
+    {
+      "name": "campaign"
+    },
+    {
+      "name": "template"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "",
+    "notes": "Voice Telecaller Campaign Workflow Template.\n\nSetup:\n1. Import this workflow into your n8n instance\n2. Configure Retell AI (or OmniDimension/Exotel/Twilio) credentials\n3. Set environment variables: SUPABASE_URL, SUPABASE_ANON_KEY\n4. Activate the workflow\n5. Copy the webhook URL and store it in client_workflow_instances.webhook_url\n\nTest payload:\n{\n  \"campaign_id\": \"test-campaign-id\",\n  \"campaign_name\": \"Test Campaign\",\n  \"client_id\": \"test-client-id\",\n  \"script\": \"Hello {name}, this is a test call.\",\n  \"voice_settings\": { \"voice\": \"female-1\", \"speed\": 1.0 },\n  \"contacts\": [{ \"id\": \"test-contact-id\", \"phone\": \"+919876543210\", \"name\": \"Test User\", \"data\": {} }],\n  \"workflow_instance_id\": \"test-instance-id\"\n}"
+  }
+}
