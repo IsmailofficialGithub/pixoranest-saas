@@ -11,6 +11,9 @@ import AnalyticsPage from "@/pages/super-admin/AnalyticsPage";
 import SettingsPage from "@/pages/super-admin/SettingsPage";
 import NotificationsPage from "@/pages/super-admin/NotificationsPage";
 import N8nControllerPage from "@/pages/super-admin/N8nControllerPage";
+import BotsPage from "@/pages/super-admin/BotsPage";
+import OutboundCampaignsPage from "@/pages/super-admin/OutboundCampaignsPage";
+import OutboundCallLogsPage from "@/pages/super-admin/OutboundCallLogsPage";
 
 export default function SuperAdminDashboard() {
   return (
@@ -22,6 +25,9 @@ export default function SuperAdminDashboard() {
         <Route path="admins/:adminId" element={<AdminDetailPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="clients/:clientId" element={<ClientDetailPage />} />
+        <Route path="outbound-bots" element={<BotsPage />} />
+        <Route path="outbound-campaigns" element={<OutboundCampaignsPage />} />
+        <Route path="outbound-call-logs" element={<OutboundCallLogsPage />} />
         <Route path="n8n-controller" element={<N8nControllerPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="settings" element={<SettingsPage />} />
