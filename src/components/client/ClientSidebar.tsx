@@ -78,12 +78,11 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
                 className="h-8 w-8 rounded-md object-cover shrink-0"
               />
             ) : (
-              <div
-                className="h-8 w-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0"
-                style={{ backgroundColor: primaryColor }}
-              >
-                {admin?.company_name?.[0] || "C"}
-              </div>
+              <img
+                src="/logo.png"
+                alt="Logo"
+                className="h-8 w-8 rounded-md object-contain shrink-0"
+              />
             )}
             <span className="font-semibold text-foreground truncate text-sm">
               {admin?.company_name || "Client Portal"}
