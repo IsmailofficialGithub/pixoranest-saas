@@ -24,6 +24,7 @@ import UsageBillingPage from "./pages/client/UsageBillingPage";
 import ClientSettingsPage from "./pages/client/ClientSettingsPage";
 import ClientNotificationsPage from "./pages/client/ClientNotificationsPage";
 import HelpSupportPage from "./pages/client/HelpSupportPage";
+import InboundServicePage from "./pages/client/InboundServicePage";
 import InstallPage from "./pages/client/InstallPage";
 import ClientAnalyticsPage from "./pages/client/ClientAnalyticsPage";
 import ServiceCatalogPage from "./pages/client/ServiceCatalogPage";
@@ -82,6 +83,7 @@ const App = () => (
               <Route path="voice-telecaller/calls" element={<CallLogsPage />} />
               <Route path="voice-telecaller/campaigns/:campaignId" element={<CampaignDetailPage />} />
               <Route path="voice-receptionist" element={<VoiceReceptionistPage />} />
+              <Route path="inbound" element={<InboundServicePage />} />
               <Route path="voice-agent" element={<VoiceAgentPage />} />
               <Route path="whatsapp" element={<WhatsAppPage />} />
               <Route path="social-media" element={<SocialMediaPage />} />

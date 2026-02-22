@@ -1,19 +1,20 @@
 import { Routes, Route } from "react-router-dom";
 import SuperAdminLayout from "@/components/super-admin/SuperAdminLayout";
-import DashboardHome from "@/pages/super-admin/DashboardHome";
+import DashboardHome from "./super-admin/DashboardHome";
 
-import ServicesPage from "@/pages/super-admin/ServicesPage";
-import AdminsPage from "@/pages/super-admin/AdminsPage";
-import AdminDetailPage from "@/pages/super-admin/AdminDetailPage";
-import ClientsPage from "@/pages/super-admin/ClientsPage";
-import ClientDetailPage from "@/pages/super-admin/ClientDetailPage";
-import AnalyticsPage from "@/pages/super-admin/AnalyticsPage";
-import SettingsPage from "@/pages/super-admin/SettingsPage";
-import NotificationsPage from "@/pages/super-admin/NotificationsPage";
-import N8nControllerPage from "@/pages/super-admin/N8nControllerPage";
-import BotsPage from "@/pages/super-admin/BotsPage";
-import OutboundCampaignsPage from "@/pages/super-admin/OutboundCampaignsPage";
-import OutboundCallLogsPage from "@/pages/super-admin/OutboundCallLogsPage";
+import ServicesPage from "./super-admin/ServicesPage";
+import AdminsPage from "./super-admin/AdminsPage";
+import AdminDetailPage from "./super-admin/AdminDetailPage";
+import ClientsPage from "./super-admin/ClientsPage";
+import ClientDetailPage from "./super-admin/ClientDetailPage";
+import AnalyticsPage from "./super-admin/AnalyticsPage";
+import SettingsPage from "./super-admin/SettingsPage";
+import NotificationsPage from "./super-admin/NotificationsPage";
+import N8nControllerPage from "./super-admin/N8nControllerPage";
+import BotsPage from "./super-admin/BotsPage";
+import OutboundCampaignsPage from "./super-admin/OutboundCampaignsPage";
+import OutboundCallLogsPage from "./super-admin/OutboundCallLogsPage";
+import InboundNumbersPage from "./super-admin/InboundNumbersPage";
 
 export default function SuperAdminDashboard() {
   return (
@@ -25,6 +26,7 @@ export default function SuperAdminDashboard() {
         <Route path="admins/:adminId" element={<AdminDetailPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="clients/:clientId" element={<ClientDetailPage />} />
+        <Route path="inbound-numbers" element={<InboundNumbersPage />} />
         <Route path="outbound-bots" element={<BotsPage />} />
         <Route path="outbound-campaigns" element={<OutboundCampaignsPage />} />
         <Route path="outbound-call-logs" element={<OutboundCallLogsPage />} />

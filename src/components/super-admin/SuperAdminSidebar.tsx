@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Zap, LayoutDashboard, Layers, Users, Briefcase, Workflow, BarChart, Settings, X, Bot, List, PhoneCall } from "lucide-react";
+import { Zap, LayoutDashboard, Layers, Users, Briefcase, Workflow, BarChart, Settings, X, Bot, List, PhoneCall, PhoneIncoming } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -8,6 +8,7 @@ const navItems = [
   { title: "Services", icon: Layers, path: "/super-admin/services" },
   { title: "Admins", icon: Users, path: "/super-admin/admins" },
   { title: "Clients", icon: Briefcase, path: "/super-admin/clients" },
+  { title: "Inbound Numbers", icon: PhoneIncoming, path: "/super-admin/inbound-numbers" },
   { title: "Outbound Bots", icon: Bot, path: "/super-admin/outbound-bots" },
   { title: "Outbound Campaigns", icon: List, path: "/super-admin/outbound-campaigns" },
   { title: "Call Logs", icon: PhoneCall, path: "/super-admin/outbound-call-logs" },
