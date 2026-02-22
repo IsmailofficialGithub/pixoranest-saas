@@ -24,6 +24,24 @@ import { supabase } from "@/integrations/supabase/client";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
+const formatDuration = (duration: any): string => {
+  if (typeof duration === 'number') {
+    return `${Math.floor(duration / 60)}m ${Math.floor(duration % 60)}s`;
+  }
+  if (typeof duration === 'string') {
+    // Check if it's already HH:MM:SS or similar like '0.00:40.00'
+    const match = duration.match(/(?:(?:(\d+)\.)?(\d+):)?(\d+)(?:\.(\d+))?$/);
+    if (match) {
+      const minutes = parseInt(match[2] || '0', 10);
+      const seconds = parseInt(match[3] || '0', 10);
+      return `${minutes}m ${seconds}s`;
+    }
+    // Fallback if parsing fails
+    return duration;
+  }
+  return '0m 0s';
+};
+
 interface InboundNumber {
   id: string;
   phone_number: string;
@@ -236,7 +254,7 @@ export default function InboundServicePage() {
                         <TableRow key={log.id}>
                           <TableCell className="font-medium">{log.caller_number}</TableCell>
                           <TableCell>{format(new Date(log.created_at), "MMM d, yyyy h:mm a")}</TableCell>
-                          <TableCell>{Math.floor(log.duration / 60)}m {log.duration % 60}s</TableCell>
+                          <TableCell>{formatDuration(log.duration)}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn(
                               "uppercase text-[10px]",
@@ -419,7 +437,7 @@ export default function InboundServicePage() {
                            {log.call_status}
                          </Badge>
                          <div className="text-[10px] font-mono">
-                           {Math.floor(log.duration / 60)}m {log.duration % 60}s
+                           {formatDuration(log.duration)}
                          </div>
                        </div>
                      </div>
@@ -470,7 +488,7 @@ export default function InboundServicePage() {
                         <TableRow key={lead.id}>
                           <TableCell className="font-medium">{lead.caller_number}</TableCell>
                           <TableCell>{format(new Date(lead.created_at), "MMM d, yyyy h:mm a")}</TableCell>
-                          <TableCell>{Math.floor(lead.duration / 60)}m {lead.duration % 60}s</TableCell>
+                          <TableCell>{formatDuration(lead.duration)}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-200">
                               Warm Lead
@@ -510,7 +528,7 @@ export default function InboundServicePage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground block">Duration</span>
-                  <span className="font-medium">{Math.floor(selectedLog.duration / 60)}m {selectedLog.duration % 60}s</span>
+                  <span className="font-medium">{formatDuration(selectedLog.duration)}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block">Status</span>
