@@ -47,6 +47,7 @@ interface CallLog {
   transcript: string | null;
   recording_url: string | null;
   created_at: string;
+  is_lead?: boolean;
 }
 
 export default function InboundServicePage() {
@@ -65,6 +66,8 @@ export default function InboundServicePage() {
   const [logs, setLogs] = useState<CallLog[]>([]);
   const [saving, setSaving] = useState(false);
 
+  const leads = useMemo(() => logs.filter(l => l.is_lead), [logs]);
+
   const fetchInitialData = useCallback(async () => {
     setLoading(true);
     try {
@@ -72,10 +75,12 @@ export default function InboundServicePage() {
       if (!user) return;
 
       // 1. Fetch assigned numbers
-      const { data: nums, error: numError } = await supabase
+      const { data: rawNums, error: numError } = await supabase
         .from("inbound_numbers" as any)
         .select("*")
         .eq("assigned_user_id", user.id);
+      
+      const nums = rawNums as any[] | null;
       
       if (numError) throw numError;
       setAssignedNumbers(nums || []);
@@ -85,21 +90,23 @@ export default function InboundServicePage() {
         setSelectedNumId(firstNum.id);
         
         // 2. Fetch agent config for this number
-        const { data: agentData } = await supabase
+        const { data: rawAgentData } = await supabase
           .from("inbound_agents" as any)
           .select("*")
           .eq("number_id", firstNum.id)
           .maybeSingle();
         
-        if (agentData) setAgent(agentData);
+        const agentData = rawAgentData as any;
+        if (agentData) setAgent(agentData as Partial<InboundAgent>);
 
         // 3. Fetch call logs
-        const { data: logData } = await supabase
+        const { data: rawLogData } = await supabase
           .from("inbound_call_logs" as any)
           .select("*")
           .eq("number_id", firstNum.id)
           .order("created_at", { ascending: false });
         
+        const logData = rawLogData as any[] | null;
         setLogs(logData || []);
       }
     } catch (error: any) {
@@ -186,8 +193,14 @@ export default function InboundServicePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-12">
-        {/* Left Column: Configuration */}
+      <Tabs defaultValue="overview" className="mt-6">
+        <TabsList className="mb-6">
+          <TabsTrigger value="overview">Overview & Configuration</TabsTrigger>
+          <TabsTrigger value="leads">Leads ({leads.length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview">
+          <div className="grid gap-6 md:grid-cols-12">
+            {/* Left Column: Configuration */}
         <div className="md:col-span-12 lg:col-span-7 space-y-6">
           <Card>
             <CardHeader>
@@ -359,7 +372,63 @@ export default function InboundServicePage() {
             )}
           </Card>
         </div>
-      </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="leads">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5 text-primary" /> Captured Leads
+              </CardTitle>
+              <CardDescription>
+                Contacts automatically identified as leads by your AI agent during their calls.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {leads.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <User className="h-10 w-10 mx-auto text-muted-foreground/30 mb-4" />
+                  <p>No leads captured yet.</p>
+                  <p className="text-sm">When the AI identifies a caller as a warm lead, they will appear here.</p>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Phone Number</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leads.map((lead) => (
+                        <TableRow key={lead.id}>
+                          <TableCell className="font-medium">{lead.caller_number}</TableCell>
+                          <TableCell>{format(new Date(lead.created_at), "MMM d, yyyy h:mm a")}</TableCell>
+                          <TableCell>{Math.floor(lead.duration / 60)}m {lead.duration % 60}s</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-200">
+                              Warm Lead
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm">
+                              View Details
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
