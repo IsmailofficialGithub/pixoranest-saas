@@ -16,6 +16,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format, formatDistanceToNow } from "date-fns";
@@ -65,6 +68,7 @@ export default function InboundServicePage() {
   });
   const [logs, setLogs] = useState<CallLog[]>([]);
   const [saving, setSaving] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<CallLog | null>(null);
 
   const leads = useMemo(() => logs.filter(l => l.is_lead), [logs]);
 
@@ -193,11 +197,69 @@ export default function InboundServicePage() {
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="mt-6">
+      <Tabs defaultValue="calls" className="mt-6">
         <TabsList className="mb-6">
-          <TabsTrigger value="overview">Overview & Configuration</TabsTrigger>
+          <TabsTrigger value="calls">Calls ({logs.length})</TabsTrigger>
           <TabsTrigger value="leads">Leads ({leads.length})</TabsTrigger>
+          <TabsTrigger value="overview">Overview & Configuration</TabsTrigger>
         </TabsList>
+        <TabsContent value="calls">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2">
+                <PhoneCall className="h-5 w-5 text-primary" /> Call History
+              </CardTitle>
+              <CardDescription>
+                Detailed log of all inbound calls handled by this agent.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {logs.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <PhoneCall className="h-10 w-10 mx-auto text-muted-foreground/30 mb-4" />
+                  <p>No calls recorded yet.</p>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Phone Number</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {logs.map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell className="font-medium">{log.caller_number}</TableCell>
+                          <TableCell>{format(new Date(log.created_at), "MMM d, yyyy h:mm a")}</TableCell>
+                          <TableCell>{Math.floor(log.duration / 60)}m {log.duration % 60}s</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={cn(
+                              "uppercase text-[10px]",
+                              log.call_status === 'answered' ? "bg-green-50 text-green-600 border-green-200" : "text-muted-foreground"
+                            )}>
+                              {log.call_status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedLog(log)}>
+                              View Details
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="overview">
           <div className="grid gap-6 md:grid-cols-12">
             {/* Left Column: Configuration */}
@@ -415,7 +477,7 @@ export default function InboundServicePage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedLog(lead)}>
                               View Details
                             </Button>
                           </TableCell>
@@ -429,6 +491,70 @@ export default function InboundServicePage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* View Details Dialog */}
+      <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Call Details</DialogTitle>
+            <DialogDescription>
+              Details and transcript for the call with {selectedLog?.caller_number}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLog && (
+            <div className="space-y-4 pt-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground block">Date & Time</span>
+                  <span className="font-medium">{format(new Date(selectedLog.created_at), "MMM d, yyyy h:mm a")}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Duration</span>
+                  <span className="font-medium">{Math.floor(selectedLog.duration / 60)}m {selectedLog.duration % 60}s</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Status</span>
+                  <Badge variant="outline" className={cn(
+                    "uppercase text-[10px] mt-1",
+                    selectedLog.call_status === 'answered' ? "bg-green-50 text-green-600 border-green-200" : "text-muted-foreground"
+                  )}>
+                    {selectedLog.call_status}
+                  </Badge>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Lead Status</span>
+                  {selectedLog.is_lead ? (
+                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-200 mt-1">Warm Lead</Badge>
+                  ) : (
+                    <span className="text-muted-foreground text-xs mt-1 block">Not marked as lead</span>
+                  )}
+                </div>
+              </div>
+
+              {selectedLog.recording_url && (
+                <div className="pt-2 border-t">
+                  <span className="text-sm font-medium mb-2 block flex items-center gap-2">
+                    <Play className="h-4 w-4" /> Recording
+                  </span>
+                  <audio controls className="w-full" src={selectedLog.recording_url} />
+                </div>
+              )}
+
+              <div className="pt-2 border-t">
+                <span className="text-sm font-medium mb-2 block flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" /> Transcript
+                </span>
+                <div className="bg-muted p-3 rounded-md max-h-[200px] overflow-y-auto text-sm whitespace-pre-wrap">
+                  {selectedLog.transcript ? selectedLog.transcript : <span className="text-muted-foreground italic">No transcript available for this call.</span>}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedLog(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

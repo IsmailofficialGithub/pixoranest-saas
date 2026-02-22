@@ -8,7 +8,7 @@ var __vite_injected_original_dirname = "E:\\coding\\saas-product-main";
 var vite_config_default = defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    port: 8081,
     hmr: {
       overlay: false
     }
