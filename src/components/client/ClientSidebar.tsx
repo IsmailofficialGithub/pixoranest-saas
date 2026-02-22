@@ -39,7 +39,7 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
 
   const commonNavItems = [
     { title: "Service Catalog", icon: Package, path: "/client/services" },
-    { title: "Leads", icon: Users, path: "/client/leads" },
+    // { title: "Leads", icon: Users, path: "/client/leads" },
     { title: "Analytics", icon: BarChart3, path: "/client/analytics" },
     { title: "Usage & Billing", icon: Activity, path: "/client/usage" },
     { title: "Settings", icon: Settings, path: "/client/settings" },
