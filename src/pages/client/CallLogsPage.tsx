@@ -95,7 +95,6 @@ export default function CallLogsPage() {
 
   const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller" || s.service_slug === "ai-voice-telecaller");
 
-  const [serviceId, setServiceId] = useState<string | null>(null);
   const [callLogs, setCallLogs] = useState<CallLogEntry[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,16 +126,6 @@ export default function CallLogsPage() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // Fetch service ID
-  useEffect(() => {
-    if (!client || ctxLoading) return;
-    (async () => {
-      const { data } = await supabase
-        .from("services").select("id").eq("slug", "voice-telecaller").maybeSingle();
-      if (data) setServiceId(data.id);
-    })();
-  }, [client, ctxLoading]);
-
   // Fetch campaigns list
   useEffect(() => {
     if (!client) return;
@@ -157,7 +146,7 @@ export default function CallLogsPage() {
 
   // Fetch call logs
   const fetchCallLogs = useCallback(async () => {
-    if (!client || !serviceId) return;
+    if (!client) return;
     setLoading(true);
 
     // Build query
@@ -226,7 +215,7 @@ export default function CallLogsPage() {
 
     setCallLogs(enriched);
     setLoading(false);
-  }, [client, serviceId, page, debouncedSearch, statusFilters, dateFrom, dateTo, campaignFilter, leadsOnly, campaigns]);
+  }, [client, page, debouncedSearch, statusFilters, dateFrom, dateTo, campaignFilter, leadsOnly, campaigns]);
 
   useEffect(() => {
     fetchCallLogs();
