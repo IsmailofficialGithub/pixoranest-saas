@@ -22,6 +22,7 @@ import {
   Pause, Copy, Trash2, Eye, Zap,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 import CreateCampaignWizard from "@/components/client/telecaller/CreateCampaignWizard";
 
 interface CampaignStats {
@@ -35,14 +36,9 @@ interface Campaign {
   id: string;
   campaign_name: string;
   status: string;
-  campaign_type: string | null;
-  total_contacts: number;
-  contacts_called: number;
-  contacts_answered: number;
   created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  script: string | null;
+  scheduled_at: string | null;
+  list_id: string | null;
 }
 
 interface CallLog {
@@ -54,6 +50,7 @@ interface CallLog {
   executed_at: string;
   recording_url: string | null;
   call_type: string | null;
+  contact_name: string | null;
 }
 
 export default function VoiceTelecallerPage() {
@@ -105,8 +102,8 @@ export default function VoiceTelecallerPage() {
       .on("postgres_changes", {
         event: "*",
         schema: "public",
-        table: "voice_campaigns",
-        filter: `client_id=eq.${client.id}`,
+        table: "outbound_scheduled_calls",
+        filter: `owner_user_id=eq.${client.user_id}`,
       }, () => {
         fetchCampaigns();
       })
@@ -129,21 +126,20 @@ export default function VoiceTelecallerPage() {
 
     const [callsRes, leadsRes] = await Promise.all([
       supabase
-        .from("call_logs")
-        .select("status")
-        .eq("client_id", client.id)
-        .eq("service_id", serviceId)
-        .gte("executed_at", monthStart),
+        .from("outbound_call_logs")
+        .select("call_status")
+        .eq("owner_user_id", client.user_id)
+        .gte("created_at", monthStart),
       supabase
-        .from("leads")
+        .from("outbound_call_logs")
         .select("id", { count: "exact", head: true })
-        .eq("client_id", client.id)
-        .eq("lead_source", "telecaller")
+        .eq("owner_user_id", client.user_id)
+        .eq("is_lead", true)
         .gte("created_at", monthStart),
     ]);
 
     const calls = callsRes.data || [];
-    const completed = calls.filter(c => c.status === "completed").length;
+    const completed = calls.filter(c => c.call_status === "completed" || c.call_status === "answered").length;
     const total = calls.length;
 
     setStats({
@@ -157,24 +153,50 @@ export default function VoiceTelecallerPage() {
   async function fetchCampaigns() {
     if (!client) return;
     const { data } = await supabase
-      .from("voice_campaigns")
-      .select("*")
-      .eq("client_id", client.id)
-      .eq("campaign_type", "telecaller")
+      .from("outbound_scheduled_calls")
+      .select(`
+        id, status, scheduled_at, created_at, list_id,
+        outbound_contact_lists ( name )
+      `)
+      .eq("owner_user_id", client.user_id)
       .order("created_at", { ascending: false });
-    setCampaigns((data as Campaign[]) || []);
+
+    if (data) {
+      const mapped = data.map((d: any) => ({
+        id: d.id,
+        campaign_name: (d.outbound_contact_lists && d.outbound_contact_lists.name) ? d.outbound_contact_lists.name : 'Outbound Campaign',
+        status: d.status || 'draft',
+        created_at: d.created_at,
+        scheduled_at: d.scheduled_at,
+        list_id: d.list_id
+      }));
+      setCampaigns(mapped);
+    }
   }
 
   async function fetchRecentCalls() {
     if (!client || !serviceId) return;
     const { data } = await supabase
-      .from("call_logs")
-      .select("id, phone_number, duration_seconds, status, ai_summary, executed_at, recording_url, call_type")
-      .eq("client_id", client.id)
-      .eq("service_id", serviceId)
-      .order("executed_at", { ascending: false })
+      .from("outbound_call_logs")
+      .select("id, phone, duration, call_status, transcript, created_at, call_url, call_type, name")
+      .eq("owner_user_id", client.user_id)
+      .order("created_at", { ascending: false })
       .limit(10);
-    setRecentCalls((data as CallLog[]) || []);
+
+    if (data) {
+      const mapped = data.map((d: any) => ({
+        id: d.id,
+        phone_number: d.phone,
+        duration_seconds: d.duration || 0,
+        status: d.call_status || 'unknown',
+        ai_summary: d.transcript,
+        executed_at: d.created_at,
+        recording_url: d.call_url,
+        call_type: d.call_type,
+        contact_name: d.name
+      }));
+      setRecentCalls(mapped);
+    }
   }
 
   if (contextLoading) {
@@ -444,7 +466,7 @@ export default function VoiceTelecallerPage() {
         primaryColor={primaryColor}
         usageLimit={telecallerService.usage_limit}
         usageConsumed={telecallerService.usage_consumed}
-        clientId={client?.id || ""}
+        clientId={client?.user_id || ""}
       />
     </div>
   );
@@ -493,76 +515,88 @@ function CampaignCard({
   primaryColor: string;
   navigate: (path: string) => void;
 }) {
-  const total = campaign.total_contacts || 0;
-  const called = campaign.contacts_called || 0;
-  const answered = campaign.contacts_answered || 0;
-  const progress = total > 0 ? Math.round((called / total) * 100) : 0;
-  const successRate = called > 0 ? Math.round((answered / called) * 100) : 0;
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  async function updateStatus(newStatus: string) {
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase
+        .from("outbound_scheduled_calls")
+        .update({ status: newStatus })
+        .eq("id", campaign.id);
+      if (error) throw error;
+      toast.success(`Campaign marked as ${newStatus}`);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  async function deleteCampaign() {
+    if (!confirm("Are you sure you want to delete this campaign? this will wipe all calls queues.")) return;
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase.from("outbound_scheduled_calls").delete().eq("id", campaign.id);
+      if (campaign.list_id) {
+        await supabase.from("outbound_contact_lists").delete().eq("id", campaign.list_id);
+      }
+      if (error) throw error;
+      toast.success("Campaign deleted successfully");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsUpdating(false);
+    }
+  }
 
   return (
-    <Card>
+    <Card className={isUpdating ? "opacity-50" : ""}>
       <CardContent className="pt-5 pb-4">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-          <div className="flex-1 min-w-0 space-y-3">
-            {/* Title + Status */}
-            <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground truncate">{campaign.campaign_name}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Created {formatDistanceToNow(new Date(campaign.created_at), { addSuffix: true })}
+                  Scheduled for {campaign.scheduled_at ? formatDistanceToNow(new Date(campaign.scheduled_at), { addSuffix: true }) : 'Now'}
                 </p>
               </div>
               <CampaignStatusBadge status={campaign.status} />
             </div>
-
-            {/* Progress */}
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted-foreground">{called} / {total} calls made</span>
-                <span className="font-medium">{progress}%</span>
-              </div>
-              <Progress value={progress} className="h-2" />
-            </div>
-
-            {/* Mini stats */}
-            <div className="flex gap-4 text-xs">
-              <div>
-                <span className="text-muted-foreground">Answered: </span>
-                <span className="font-medium">{answered}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Success: </span>
-                <span className="font-medium">{successRate}%</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Total: </span>
-                <span className="font-medium">{total}</span>
-              </div>
-            </div>
           </div>
 
-          {/* Actions */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
+              <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" disabled={isUpdating}>
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem><Eye className="h-3 w-3 mr-2" /> View Details</DropdownMenuItem>
-              <DropdownMenuItem><Phone className="h-3 w-3 mr-2" /> View Calls</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate(`/client/voice-telecaller/campaigns/${campaign.id}`)}>
+                <Eye className="h-3 w-3 mr-2" /> View Details
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate(`/client/voice-telecaller/calls?campaign=${campaign.id}`)}>
+                <Phone className="h-3 w-3 mr-2" /> View Calls
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate("/client/leads")}>
                 <Users className="h-3 w-3 mr-2" /> View Leads
               </DropdownMenuItem>
               {campaign.status === "running" && (
-                <DropdownMenuItem><Pause className="h-3 w-3 mr-2" /> Pause</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => updateStatus('paused')}>
+                  <Pause className="h-3 w-3 mr-2" /> Pause
+                </DropdownMenuItem>
               )}
               {campaign.status === "paused" && (
-                <DropdownMenuItem><Play className="h-3 w-3 mr-2" /> Resume</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => updateStatus('running')}>
+                  <Play className="h-3 w-3 mr-2" /> Resume
+                </DropdownMenuItem>
               )}
-              <DropdownMenuItem><Copy className="h-3 w-3 mr-2" /> Clone Campaign</DropdownMenuItem>
-              {(campaign.status === "draft" || campaign.status === "completed") && (
-                <DropdownMenuItem className="text-destructive focus:text-destructive">
+              {/* <DropdownMenuItem onClick={() => toast.info("Clone functionality coming soon!")}>
+                <Copy className="h-3 w-3 mr-2" /> Clone Campaign
+              </DropdownMenuItem> */}
+              {(campaign.status === "draft" || campaign.status === "completed" || campaign.status === "pending") && (
+                <DropdownMenuItem onClick={deleteCampaign} className="text-destructive focus:text-destructive">
                   <Trash2 className="h-3 w-3 mr-2" /> Delete
                 </DropdownMenuItem>
               )}
@@ -578,6 +612,7 @@ function CampaignStatusBadge({ status }: { status: string }) {
   const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string; className?: string }> = {
     draft: { variant: "outline", label: "Draft" },
     scheduled: { variant: "secondary", label: "Scheduled" },
+    pending: { variant: "secondary", label: "Pending" },
     running: { variant: "default", label: "Running", className: "animate-pulse" },
     paused: { variant: "outline", label: "Paused", className: "border-yellow-500 text-yellow-600" },
     completed: { variant: "default", label: "Completed" },

@@ -18,7 +18,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -359,7 +358,7 @@ export default function AssignServicesModal({ open, onOpenChange, clientId, clie
         <Separator />
 
         {/* Services List */}
-        <ScrollArea className="flex-1 px-6 min-h-0">
+        <div className="flex-1 px-6 overflow-y-auto min-h-0 py-2">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -548,7 +547,7 @@ export default function AssignServicesModal({ open, onOpenChange, clientId, clie
               })}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         {/* Bottom summary */}
         {summary.totalCount > 0 && (

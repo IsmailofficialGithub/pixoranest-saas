@@ -302,17 +302,25 @@ export default function CreateCampaignWizard({
 
   async function handleSaveAsDraft() {
     try {
-      const { error } = await supabase.from("voice_campaigns").insert({
-        client_id: clientId,
-        campaign_name: data.campaignName,
-        campaign_type: "telecaller" as any,
-        script: data.script || null,
-        total_contacts: validContacts.length,
-        status: "draft" as any,
-        scheduled_at: data.scheduleType === "later" && data.scheduledAt
-          ? new Date(data.scheduledAt).toISOString()
-          : null,
+      const { data: list, error: listErr } = await supabase.from("outbound_contact_lists").insert({
+        owner_user_id: clientId,
+        name: data.campaignName,
+        description: data.script || null,
+      }).select("id").single();
+      
+      if (listErr || !list) throw listErr || new Error("Failed to create list");
+
+      const schedAt = data.scheduleType === "later" && data.scheduledAt
+        ? new Date(data.scheduledAt).toISOString()
+        : new Date().toISOString();
+
+      const { error } = await supabase.from("outbound_scheduled_calls").insert({
+        owner_user_id: clientId,
+        list_id: list.id,
+        status: "draft",
+        scheduled_at: schedAt,
       });
+
       if (error) throw error;
       toast.success("Campaign saved as draft");
       localStorage.removeItem(STORAGE_KEY);
@@ -330,44 +338,57 @@ export default function CreateCampaignWizard({
     setLaunchStep(1);
 
     try {
-      // Step 1: Create campaign
-      const { data: campaign, error: campError } = await supabase
-        .from("voice_campaigns")
+      // Step 1: Create Contact List
+      const { data: list, error: listError } = await supabase
+        .from("outbound_contact_lists")
         .insert({
-          client_id: clientId,
-          campaign_name: data.campaignName,
-          campaign_type: "telecaller" as any,
-          script: data.script,
-          total_contacts: validContacts.length,
-          status: (data.scheduleType === "later" ? "scheduled" : "running") as any,
-          scheduled_at: data.scheduleType === "later" && data.scheduledAt
-            ? new Date(data.scheduledAt).toISOString()
-            : null,
+          owner_user_id: clientId,
+          name: data.campaignName,
+          description: data.script || null,
         })
         .select("id")
         .single();
 
-      if (campError || !campaign) throw campError || new Error("Failed to create campaign");
+      if (listError || !list) throw listError || new Error("Failed to create contact list");
       setLaunchStep(2);
 
       // Step 2: Insert contacts in batches
       const BATCH = 500;
       for (let i = 0; i < validContacts.length; i += BATCH) {
         const batch = validContacts.slice(i, i + BATCH).map(c => ({
-          campaign_id: campaign.id,
+          list_id: list.id,
           phone_number: c.phone,
-          contact_name: c.name || null,
-          contact_data: { email: c.email, company: c.company } as any,
-          call_status: "pending" as any,
+          name: c.name || "Unknown",
+          email: c.email || null,
+          extra_data: { company: c.company },
         }));
         const { error: contactErr } = await supabase
-          .from("campaign_contacts")
+          .from("outbound_contacts")
           .insert(batch);
         if (contactErr) throw contactErr;
       }
       setLaunchStep(3);
 
-      // Step 3: Trigger workflow (best-effort)
+      // Step 3: Create Scheduled Call
+      const schedAt = data.scheduleType === "later" && data.scheduledAt
+        ? new Date(data.scheduledAt).toISOString()
+        : new Date().toISOString();
+
+      const { data: campaign, error: campError } = await supabase
+        .from("outbound_scheduled_calls")
+        .insert({
+          owner_user_id: clientId,
+          list_id: list.id,
+          status: data.scheduleType === "later" ? "scheduled" : "pending",
+          scheduled_at: schedAt,
+        })
+        .select("id")
+        .single();
+
+      if (campError || !campaign) throw campError || new Error("Failed to create scheduled call");
+      setLaunchStep(4);
+
+      // Trigger workflow (best-effort)
       try {
         await supabase.functions.invoke("trigger-telecaller-campaign", {
           body: { campaign_id: campaign.id, client_id: clientId },
@@ -375,7 +396,6 @@ export default function CreateCampaignWizard({
       } catch {
         // Non-fatal: workflow may not be set up yet
       }
-      setLaunchStep(4);
 
       // Clean up
       localStorage.removeItem(STORAGE_KEY);

@@ -93,7 +93,7 @@ export default function CallLogsPage() {
   const isMobile = useIsMobile();
   const [searchParams] = useSearchParams();
 
-  const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller");
+  const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller" || s.service_slug === "ai-voice-telecaller");
 
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [callLogs, setCallLogs] = useState<CallLogEntry[]>([]);
@@ -142,10 +142,16 @@ export default function CallLogsPage() {
     if (!client) return;
     (async () => {
       const { data } = await supabase
-        .from("voice_campaigns").select("id, campaign_name")
-        .eq("client_id", client.id).eq("campaign_type", "telecaller")
+        .from("outbound_scheduled_calls")
+        .select("id, list_id, outbound_contact_lists(name)")
+        .eq("owner_user_id", client.user_id)
         .order("created_at", { ascending: false });
-      setCampaigns((data || []) as CampaignOption[]);
+      
+      const mapped = (data || []).map((d: any) => ({
+        id: d.id,
+        campaign_name: d.outbound_contact_lists?.name || 'Outbound Campaign'
+      }));
+      setCampaigns(mapped);
     })();
   }, [client]);
 
@@ -156,20 +162,19 @@ export default function CallLogsPage() {
 
     // Build query
     let query = supabase
-      .from("call_logs")
+      .from("outbound_call_logs")
       .select("*", { count: "exact" })
-      .eq("client_id", client.id)
-      .eq("service_id", serviceId)
-      .order("executed_at", { ascending: false })
+      .eq("owner_user_id", client.user_id)
+      .order("created_at", { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    if (dateFrom) query = query.gte("executed_at", startOfDay(dateFrom).toISOString());
-    if (dateTo) query = query.lte("executed_at", endOfDay(dateTo).toISOString());
+    if (dateFrom) query = query.gte("created_at", startOfDay(dateFrom).toISOString());
+    if (dateTo) query = query.lte("created_at", endOfDay(dateTo).toISOString());
     if (debouncedSearch) {
-      query = query.or(`phone_number.ilike.%${debouncedSearch}%,ai_summary.ilike.%${debouncedSearch}%`);
+      query = query.or(`phone.ilike.%${debouncedSearch}%,transcript.ilike.%${debouncedSearch}%`);
     }
     if (statusFilters.length > 0) {
-      query = query.in("status", statusFilters as any);
+      query = query.in("call_status", statusFilters as any);
     }
 
     const { data: logs, count, error } = await query;
@@ -182,36 +187,32 @@ export default function CallLogsPage() {
     setTotalCount(count || 0);
 
     // Enrich with contact names, campaign names, and lead info
-    const logIds = (logs || []).map(l => l.id);
+    const logIds = (logs || []).map((l: any) => l.id);
     if (logIds.length === 0) {
       setCallLogs([]);
       setLoading(false);
       return;
     }
 
-    const [contactsRes, leadsRes] = await Promise.all([
-      supabase.from("campaign_contacts")
-        .select("call_log_id, contact_name, campaign_id")
-        .in("call_log_id", logIds),
-      supabase.from("leads")
-        .select("id, call_log_id, lead_score")
-        .in("call_log_id", logIds),
-    ]);
-
-    const contactMap = new Map((contactsRes.data || []).map(c => [c.call_log_id!, c]));
-    const leadMap = new Map((leadsRes.data || []).map(l => [l.call_log_id!, l]));
     const campaignMap = new Map(campaigns.map(c => [c.id, c.campaign_name]));
 
-    let enriched: CallLogEntry[] = (logs || []).map(l => {
-      const contact = contactMap.get(l.id);
-      const lead = leadMap.get(l.id);
+    let enriched: CallLogEntry[] = (logs || []).map((l: any) => {
       return {
-        ...l,
-        contact_name: contact?.contact_name || null,
-        campaign_id: contact?.campaign_id || null,
-        campaign_name: contact?.campaign_id ? campaignMap.get(contact.campaign_id) || null : null,
-        lead_id: lead?.id || null,
-        lead_score: lead?.lead_score || null,
+        id: l.id,
+        phone_number: l.phone,
+        status: l.call_status,
+        duration_seconds: l.duration,
+        ai_summary: l.transcript,
+        recording_url: l.call_url,
+        transcript: l.transcript,
+        executed_at: l.created_at,
+        call_type: l.call_type,
+        cost: 0,
+        contact_name: l.name || null,
+        campaign_id: l.scheduled_call_id || null,
+        campaign_name: l.scheduled_call_id ? campaignMap.get(l.scheduled_call_id) || null : null,
+        lead_id: null, // Logic for getting lead ID from `leads` table if necessary can be added here
+        lead_score: null, 
       };
     });
 

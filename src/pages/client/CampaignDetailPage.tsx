@@ -149,62 +149,73 @@ export default function CampaignDetailPage() {
   // Fetch campaign
   const fetchCampaign = useCallback(async () => {
     if (!campaignId || !client) return;
-    const { data, error } = await supabase
-      .from("voice_campaigns")
-      .select("*")
+    const { data: schedData, error } = await supabase
+      .from("outbound_scheduled_calls")
+      .select("*, outbound_contact_lists(*)")
       .eq("id", campaignId)
-      .eq("client_id", client.id)
+      .eq("owner_user_id", client.user_id)
       .maybeSingle();
 
-    if (error || !data) {
+    if (error || !schedData) {
       setNotFound(true);
       setLoading(false);
       return;
     }
-    setCampaign(data as Campaign);
+
+    // Map `outbound_scheduled_calls` to expected shape
+    const list = schedData.outbound_contact_lists;
+    setCampaign({
+      id: schedData.id,
+      campaign_name: list?.name || "Campaign",
+      campaign_type: "Telecaller",
+      status: schedData.status,
+      script: list?.description,
+      total_contacts: 0,
+      contacts_called: 0,
+      contacts_answered: 0,
+      scheduled_at: schedData.scheduled_at,
+      started_at: schedData.created_at, // Use created as rough proxy
+      completed_at: null,
+      created_at: schedData.created_at,
+    });
     setLoading(false);
   }, [campaignId, client]);
 
-  // Fetch call logs
+  // Fetch call logs & activity
   const fetchCallLogs = useCallback(async () => {
     if (!campaignId || !client) return;
-    // Get contacts for this campaign
-    const { data: contacts } = await supabase
-      .from("campaign_contacts")
-      .select("phone_number, contact_name, call_log_id, call_status")
-      .eq("campaign_id", campaignId);
+    
+    // In actual implementation, we'd query outbound_call_logs where scheduled_call_id = campaignId.
+    const { data: logs } = await supabase
+      .from("outbound_call_logs")
+      .select("*")
+      .eq("scheduled_call_id", campaignId)
+      .order("created_at", { ascending: false });
 
-    const contactMap = new Map(
-      (contacts || []).filter(c => c.call_log_id).map(c => [c.call_log_id!, c])
-    );
+    const mapped = (logs || []).map((l: any) => ({
+      id: l.id,
+      phone_number: l.phone,
+      status: l.call_status,
+      duration_seconds: l.duration,
+      ai_summary: l.transcript,
+      recording_url: l.call_url,
+      transcript: l.transcript,
+      executed_at: l.created_at,
+      call_type: l.call_type,
+      contact_name: l.name || undefined,
+    })) as CallLog[];
 
-    if (contactMap.size > 0) {
-      const { data: logs } = await supabase
-        .from("call_logs")
-        .select("*")
-        .in("id", Array.from(contactMap.keys()))
-        .order("executed_at", { ascending: false });
+    setCallLogs(mapped);
 
-      setCallLogs(
-        (logs || []).map(l => ({
-          ...l,
-          contact_name: contactMap.get(l.id)?.contact_name || undefined,
-        })) as CallLog[]
-      );
-    } else {
-      setCallLogs([]);
-    }
-
-    // Build activity feed from contacts
-    const recentContacts = (contacts || [])
-      .filter(c => c.call_status && c.call_status !== "pending")
+    // Build activity feed
+    const recentContacts = mapped
       .slice(0, 20)
       .map(c => ({
-        id: c.call_log_id || c.phone_number,
+        id: c.id,
         phone: c.phone_number,
-        name: c.contact_name,
-        status: c.call_status || "pending",
-        timestamp: new Date().toISOString(), // We don't have exact timestamp on contacts
+        name: c.contact_name || null,
+        status: c.status || "pending",
+        timestamp: c.executed_at || new Date().toISOString(),
         isLead: false,
       }));
     setActivity(recentContacts);
@@ -238,23 +249,21 @@ export default function CampaignDetailPage() {
       .on("postgres_changes", {
         event: "*",
         schema: "public",
-        table: "voice_campaigns",
+        table: "outbound_scheduled_calls",
         filter: `id=eq.${campaignId}`,
       }, () => fetchCampaign())
       .on("postgres_changes", {
         event: "*",
         schema: "public",
-        table: "campaign_contacts",
-        filter: `campaign_id=eq.${campaignId}`,
+        table: "outbound_call_logs",
+        filter: `scheduled_call_id=eq.${campaignId}`,
       }, () => {
         fetchCallLogs();
-        fetchCampaign();
       })
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
         table: "leads",
-        filter: `campaign_id=eq.${campaignId}`,
       }, () => fetchLeads())
       .subscribe();
 
@@ -267,7 +276,7 @@ export default function CampaignDetailPage() {
     setActionLoading(true);
     const newStatus = campaign.status === "running" ? "paused" : "running";
     const { error } = await supabase
-      .from("voice_campaigns")
+      .from("outbound_scheduled_calls")
       .update({ status: newStatus as any })
       .eq("id", campaign.id);
     if (error) toast.error("Failed to update campaign");
@@ -280,9 +289,7 @@ export default function CampaignDetailPage() {
   async function handleDelete() {
     if (!campaign || deleteConfirmName !== campaign.campaign_name) return;
     setActionLoading(true);
-    // Delete contacts first, then campaign
-    await supabase.from("campaign_contacts").delete().eq("campaign_id", campaign.id);
-    const { error } = await supabase.from("voice_campaigns").delete().eq("id", campaign.id);
+    const { error } = await supabase.from("outbound_scheduled_calls").delete().eq("id", campaign.id);
     if (error) toast.error("Failed to delete campaign");
     else {
       toast.success("Campaign deleted");
@@ -296,8 +303,8 @@ export default function CampaignDetailPage() {
     if (!campaign) return;
     setActionLoading(true);
     const { error } = await supabase
-      .from("voice_campaigns")
-      .update({ status: "running" as any, started_at: new Date().toISOString() })
+      .from("outbound_scheduled_calls")
+      .update({ status: "running" as any })
       .eq("id", campaign.id);
     if (error) toast.error("Failed to launch");
     else toast.success("Campaign launched!");
@@ -337,7 +344,7 @@ export default function CampaignDetailPage() {
   }, [callLogs]);
 
   // Check access
-  const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller");
+  const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller" || s.service_slug === "ai-voice-telecaller");
   if (!ctxLoading && !telecallerService) return <Navigate to="/client" replace />;
 
   if (loading || ctxLoading) {

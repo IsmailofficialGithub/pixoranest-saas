@@ -10,12 +10,14 @@ import {
   Bot, 
   ShieldCheck, 
   Zap, 
-  BarChart3 
+  BarChart3,
+  ChevronRight,
+  Globe,
+  Sparkles
 } from "lucide-react";
 import { 
   Card, 
   CardContent, 
-  CardDescription, 
   CardHeader, 
   CardTitle 
 } from "@/components/ui/card";
@@ -26,62 +28,85 @@ const Index = () => {
   const features = [
     {
       title: "AI Voice Telecaller",
-      description: "Automate outbound calls with natural-sounding AI and reach thousands of leads instantly.",
-      icon: <Phone className="h-10 w-10 text-primary" />,
+      description: "Automate outbound calls with natural-sounding AI and reach thousands of leads instantly, multiplying your sales force without the overhead.",
+      icon: <Phone className="h-6 w-6 text-blue-500" />,
+      color: "from-blue-500/20 to-transparent",
     },
     {
       title: "AI Voice Receptionist",
-      description: "Handle inbound calls 24/7. Route calls, take messages, and assist customers without human delay.",
-      icon: <UserCheck className="h-10 w-10 text-primary" />,
+      description: "Handle inbound calls 24/7. Route calls, take messages, and assist customers continuously without any human delay or fatigue.",
+      icon: <UserCheck className="h-6 w-6 text-purple-500" />,
+      color: "from-purple-500/20 to-transparent",
     },
     {
       title: "WhatsApp Automation",
-      description: "Scale your customer outreach on WhatsApp with automated messaging and smart campaigns.",
-      icon: <MessageSquare className="h-10 w-10 text-primary" />,
+      description: "Scale your customer outreach on WhatsApp with intelligent conversational workflows, automated messaging, and smart drip campaigns.",
+      icon: <MessageSquare className="h-6 w-6 text-green-500" />,
+      color: "from-green-500/20 to-transparent",
     },
     {
       title: "Social Media Automation",
-      description: "Manage and automate your social presence across platforms with AI-driven content scheduling.",
-      icon: <Share2 className="h-10 w-10 text-primary" />,
+      description: "Manage and automate your social presence across platforms with AI-driven content scheduling, engagement, and trend analysis.",
+      icon: <Share2 className="h-6 w-6 text-pink-500" />,
+      color: "from-pink-500/20 to-transparent",
     },
     {
-      title: "AI Voice Agent",
-      description: "Deploy custom AI agents for specialized voice tasks and deep customer interactions.",
-      icon: <Bot className="h-10 w-10 text-primary" />,
+      title: "Custom AI Agents",
+      description: "Deploy highly specialized custom AI agents for specialized voice tasks, deep customer interactions, and complex problem-solving.",
+      icon: <Bot className="h-6 w-6 text-indigo-500" />,
+      color: "from-indigo-500/20 to-transparent",
     },
     {
       title: "Advanced Analytics",
-      description: "Track performance, call sentiment, and conversion rates with our powerful analytics engine.",
-      icon: <BarChart3 className="h-10 w-10 text-primary" />,
+      description: "Track performance, real-time call sentiment, conversion rates, and ROI with our powerful, beautifully designed analytics engine.",
+      icon: <BarChart3 className="h-6 w-6 text-orange-500" />,
+      color: "from-orange-500/20 to-transparent",
     },
   ];
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-slate-950 font-sans text-slate-50 selection:bg-indigo-500/30 overflow-hidden">
+      {/* Dynamic Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] h-[40%] w-[40%] rounded-full bg-indigo-600/20 blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-blue-600/20 blur-[120px]" />
+        <div className="absolute top-[40%] left-[60%] h-[30%] w-[30%] rounded-full bg-purple-600/10 blur-[100px]" />
+        
+        {/* Subtle grid pattern overlay */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-20" />
+      </div>
+
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <Link to="/" className="flex items-center gap-2 transition-opacity hover:opacity-90">
-            <img src="/logo.png" alt="Pixoranest Logo" className="h-10 w-auto" />
+      <header className="relative z-50 w-full border-b border-white/5 bg-slate-950/50 backdrop-blur-xl">
+        <div className="container mx-auto flex h-20 items-center justify-between px-6 lg:px-8">
+          <Link to="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg shadow-indigo-500/20">
+             <img src="/logo.png" alt="Logo" className="h-10 w-10" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-white">Pixoranest</span>
           </Link>
           <nav className="flex items-center gap-4">
             {loading ? (
-              <Button variant="ghost" disabled size="sm" className="w-24">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <Button variant="ghost" disabled size="sm" className="w-24 bg-white/5 text-slate-300">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
               </Button>
             ) : session ? (
               <Link to={getRedirectPath(profile?.role || "client")}>
-                <Button size="sm" className="gap-2">
-                  Go to Dashboard <ArrowRight className="h-4 w-4" />
+                <Button size="sm" className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 rounded-full px-6">
+                  Dashboard <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
             ) : (
               <>
-                <Link to="/login">
-                  <Button variant="ghost" size="sm">Login</Button>
+                <Link to="/login" className="hidden sm:block">
+                  <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white hover:bg-white/5 rounded-full px-6">
+                    Sign In
+                  </Button>
                 </Link>
                 <Link to="/login">
-                  <Button size="sm">Get Started</Button>
+                  <Button size="sm" className="gap-2 bg-white text-slate-950 hover:bg-slate-200 rounded-full px-6 font-semibold transition-all hover:scale-105 active:scale-95">
+                    Get Started <ChevronRight className="h-4 w-4" />
+                  </Button>
                 </Link>
               </>
             )}
@@ -89,116 +114,149 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="flex-1">
+      <main className="relative z-10 flex-1">
         {/* Hero Section */}
-        <section className="relative overflow-hidden py-24 md:py-32">
-          {/* Background Decorative Blurs */}
-          <div className="absolute top-0 -z-10 h-full w-full">
-            <div className="absolute top-1/4 left-1/4 h-[400px] w-[400px] rounded-full bg-primary/20 blur-[120px]" />
-            <div className="absolute bottom-1/4 right-1/4 h-[400px] w-[400px] rounded-full bg-blue-500/10 blur-[120px]" />
+        <section className="relative px-6 py-32 lg:px-8 lg:py-40 flex flex-col items-center text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-4 py-1.5 text-sm font-medium text-indigo-300 mb-8 backdrop-blur-md shadow-[0_0_20px_rgba(99,102,241,0.15)] transition-all hover:bg-indigo-500/20 cursor-default">
+            <Sparkles className="h-4 w-4 text-indigo-400" />
+            <span>Next-Gen AI Automation Platform</span>
           </div>
-
-          <div className="container mx-auto px-4 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-muted/50 px-4 py-1.5 text-sm font-medium mb-8">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
-              </span>
-              Next-Gen AI Automation Platform
-            </div>
-            <h1 className="mx-auto max-w-4xl text-5xl font-extrabold tracking-tight md:text-7xl lg:text-8xl">
-              Scale Your Communications <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">with AI</span>
-            </h1>
-            <p className="mx-auto mt-8 max-w-2xl text-xl text-muted-foreground md:text-2xl">
-              The all-in-one multi-tenant SaaS for white-labeled AI Voice, WhatsApp, and Social Media automation.
-            </p>
-            <div className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              {loading ? (
-                <Button size="lg" disabled className="h-12 w-48">Loading...</Button>
-              ) : session ? (
-                <Link to={getRedirectPath(profile?.role || "client")}>
-                  <Button size="lg" className="h-12 px-8 gap-2 text-lg">
-                    Access Dashboard <ArrowRight className="h-5 w-5" />
+          
+          <h1 className="mx-auto max-w-5xl text-5xl font-extrabold tracking-tight sm:text-7xl lg:text-8xl text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 drop-shadow-sm pb-2">
+            Scale Your Communications <br className="hidden md:block"/>
+            <span className="bg-gradient-to-r from-indigo-400 via-blue-500 to-purple-500 bg-clip-text text-transparent filter drop-shadow-[0_0_30px_rgba(99,102,241,0.3)]">with AI</span>
+          </h1>
+          
+          <p className="mx-auto mt-8 max-w-2xl text-lg sm:text-xl text-slate-400 leading-relaxed font-light">
+            The all-in-one multi-tenant SaaS for white-labeled AI Voice, WhatsApp, and Social Media automation. Transform how your business connects globally.
+          </p>
+          
+          <div className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row w-full max-w-md mx-auto sm:max-w-none">
+            {loading ? (
+              <Button size="lg" disabled className="h-14 w-48 rounded-full bg-white/10">Loading...</Button>
+            ) : session ? (
+              <Link to={getRedirectPath(profile?.role || "client")}>
+                <Button size="lg" className="h-14 px-8 gap-3 text-lg rounded-full bg-indigo-600 hover:bg-indigo-500 w-full sm:w-auto shadow-[0_0_40px_-10px_rgba(99,102,241,0.5)] transition-all hover:scale-105">
+                  Launch Dashboard <ArrowRight className="h-5 w-5" />
+                </Button>
+              </Link>
+            ) : (
+              <>
+                <Link to="/login" className="w-full sm:w-auto">
+                  <Button size="lg" className="h-14 px-8 gap-3 text-lg rounded-full bg-white text-slate-950 hover:bg-slate-200 w-full sm:w-auto shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)] transition-all hover:scale-105 font-semibold">
+                    Start Growing Today <ArrowRight className="h-5 w-5" />
                   </Button>
                 </Link>
-              ) : (
-                <>
-                  <Link to="/login">
-                    <Button size="lg" className="h-12 px-8 gap-2 text-lg">
-                      Start Growing Today <ArrowRight className="h-5 w-5" />
-                    </Button>
-                  </Link>
-                  <Button variant="outline" size="lg" className="h-12 px-8 text-lg">
+                <div className="w-full sm:w-auto mt-4 sm:mt-0">
+                  <Button variant="outline" size="lg" className="h-14 px-8 text-lg rounded-full border-white/20 hover:bg-white/5 text-black hover:text-white w-full sm:w-auto backdrop-blur-sm transition-all hover:border-white/40">
                     Book a Demo
                   </Button>
-                </>
-              )}
-            </div>
-            <div className="mt-16 flex items-center justify-center gap-8 grayscale opacity-50">
-              <div className="font-bold text-2xl">Exotel</div>
-              <div className="font-bold text-2xl">Meta</div>
-              <div className="font-bold text-2xl">Twilio</div>
-              <div className="font-bold text-2xl">Retell AI</div>
+                </div>
+              </>
+            )}
+          </div>
+          
+          {/* Trusted By - Styled beautifully */}
+          <div className="mt-24 w-full max-w-4xl mx-auto border-t border-white/10 pt-10">
+            <p className="text-sm font-medium text-slate-500 tracking-widest uppercase mb-8">Integrated with industry leaders</p>
+            <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-8 opacity-60">
+              {['Exotel', 'Meta', 'Twilio', 'Retell AI', 'ElevenLabs'].map((brand, i) => (
+                <div key={i} className="text-xl md:text-2xl font-bold bg-gradient-to-r from-slate-400 to-slate-600 bg-clip-text text-transparent filter hover:brightness-150 transition-all duration-300 cursor-default">
+                  {brand}
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
         {/* Features Section */}
-        <section className="bg-muted/30 py-24">
-          <div className="container mx-auto px-4">
-            <div className="mb-16 text-center">
-              <h2 className="text-3xl font-bold tracking-tight md:text-5xl">Engineered for Success</h2>
-              <p className="mt-4 text-lg text-muted-foreground">Comprehensive AI services managed under one roof.</p>
+        <section className="relative px-6 py-24 lg:px-8 border-t border-white/5 bg-slate-950/20 backdrop-blur-md">
+          <div className="container mx-auto max-w-7xl">
+            <div className="mb-20 text-center max-w-3xl mx-auto">
+              <h2 className="text-3xl font-bold tracking-tight md:text-5xl bg-gradient-to-br from-white to-slate-400 bg-clip-text text-transparent pb-2">Engineered for Success</h2>
+              <p className="mt-6 text-lg text-slate-400 font-light">Comprehensive suite of autonomous AI services effortlessly managed under one unified, beautiful roof.</p>
             </div>
-            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {features.map((feature, index) => (
-                <Card key={index} className="border-none bg-background shadow-lg transition-transform hover:-translate-y-1">
-                  <CardHeader>
-                    <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                <div key={index} className="group relative rounded-3xl border border-white/5 bg-white/[0.02] p-8 hover:bg-white/[0.04] transition-all duration-500 overflow-hidden hover:-translate-y-1">
+                  {/* Subtle glowing background orb inside the card */}
+                  <div className={`absolute -top-24 -right-24 h-48 w-48 rounded-full bg-gradient-to-br ${feature.color} opacity-0 group-hover:opacity-100 blur-3xl transition-opacity duration-700 pointer-events-none`} />
+                  
+                  <div className="relative z-10">
+                    <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 border border-white/10 shadow-inner group-hover:scale-110 group-hover:bg-white/10 transition-all duration-300">
                       {feature.icon}
                     </div>
-                    <CardTitle className="text-xl">{feature.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">{feature.description}</p>
-                  </CardContent>
-                </Card>
+                    <h3 className="text-xl font-semibold text-white mb-3 tracking-tight">{feature.title}</h3>
+                    <p className="text-slate-400 leading-relaxed font-light text-sm md:text-base">
+                      {feature.description}
+                    </p>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
         </section>
 
         {/* Why Us Section */}
-        <section className="py-24">
-          <div className="container mx-auto px-4">
-            <div className="flex flex-col items-center justify-between gap-12 lg:flex-row">
-              <div className="max-w-2xl text-left">
-                <h2 className="text-3xl font-bold tracking-tight md:text-5xl mb-6">Built for Scale & White-Labeling</h2>
-                <div className="space-y-6">
-                  <div className="flex gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-500/10">
-                      <ShieldCheck className="h-6 w-6 text-green-600" />
+        <section className="relative px-6 py-32 lg:px-8 border-t border-white/5">
+          <div className="container mx-auto max-w-7xl">
+            <div className="flex flex-col items-center justify-between gap-16 lg:flex-row">
+              <div className="w-full max-w-xl text-left">
+                <div className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-400 mb-6 uppercase tracking-wider backdrop-blur-sm">
+                  Enterprise Grade
+                </div>
+                <h2 className="text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl mb-8 leading-[1.1] text-white">Built for Scale & <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">White-Labeling</span></h2>
+                <div className="space-y-8 mt-12">
+                  <div className="group flex gap-5">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20">
+                      <ShieldCheck className="h-7 w-7 text-indigo-400" />
                     </div>
-                    <div>
-                      <h4 className="text-lg font-semibold">Multi-Tenant Isolation</h4>
-                      <p className="text-muted-foreground">Secure Row-Level Security ensures your client data is perfectly isolated and private.</p>
+                    <div className="flex-1">
+                      <h4 className="text-xl font-semibold text-slate-200 mb-2">Multi-Tenant Isolation</h4>
+                      <p className="text-slate-400 font-light leading-relaxed">Advanced Row-Level Security in PostgreSQL ensures your client data is perfectly isolated, completely secure, and strictly private at all times.</p>
                     </div>
                   </div>
-                  <div className="flex gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500/10">
-                      <Zap className="h-6 w-6 text-blue-600" />
+                  <div className="group flex gap-5">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/20">
+                      <Zap className="h-7 w-7 text-blue-400" />
                     </div>
-                    <div>
-                      <h4 className="text-lg font-semibold">Real-time Performance</h4>
-                      <p className="text-muted-foreground">Monitor your AI's performance in real-time with zero latency dashboards.</p>
+                    <div className="flex-1">
+                      <h4 className="text-xl font-semibold text-slate-200 mb-2">Real-time Performance</h4>
+                      <p className="text-slate-400 font-light leading-relaxed">Monitor your AI's conversational performance and latency in real-time with stunning, lag-free dashboards engineered for instant feedback.</p>
                     </div>
                   </div>
                 </div>
               </div>
-              <div className="relative h-[400px] w-full max-w-[500px] rounded-2xl bg-gradient-to-br from-primary to-blue-600 p-8 text-white shadow-2xl flex flex-col justify-end">
-                <div className="absolute top-8 right-8 h-24 w-24 bg-white/20 blur-3xl rounded-full" />
-                <h3 className="text-4xl font-bold mb-4 italic">"The most robust communication AI we've ever used."</h3>
-                <p className="text-lg font-medium opacity-90">— TechFlow Solutions</p>
+              
+              <div className="relative w-full max-w-lg lg:max-w-xl">
+                {/* Floating decorative elements */}
+                <div className="absolute -top-10 -right-10 h-32 w-32 rounded-full bg-blue-500/20 blur-[60px]" />
+                <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-indigo-600/20 blur-[60px]" />
+                
+                <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60 p-10 text-white shadow-2xl backdrop-blur-xl group hover:border-white/20 transition-all duration-500">
+                  <div className="absolute top-0 right-0 p-8 opacity-20 group-hover:opacity-40 transition-opacity rotate-12 group-hover:rotate-0 duration-700">
+                    <Bot className="w-32 h-32 text-indigo-400" />
+                  </div>
+                  <div className="relative z-10 flex flex-col h-full justify-between min-h-[300px]">
+                    <div>
+                      <div className="flex gap-1 mb-6">
+                        {[1,2,3,4,5].map(i => (
+                          <svg key={i} className="w-5 h-5 text-yellow-500 fill-current" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                        ))}
+                      </div>
+                      <h3 className="text-3xl lg:text-4xl font-semibold mb-6 leading-snug tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-slate-400 transition-all">
+                        "The most robust, intelligent communication AI platform we've ever scaled with."
+                      </h3>
+                    </div>
+                    <div>
+                      <p className="text-lg font-medium text-indigo-300">Sarah Jenkins</p>
+                      <p className="text-slate-400 text-sm">CTO, TechFlow Solutions</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -206,19 +264,22 @@ const Index = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t py-12">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
-            <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Pixoranest Logo" className="h-8 w-auto grayscale brightness-0 invert opacity-60" />
+      <footer className="relative z-10 border-t border-white/10 bg-slate-950 py-12">
+        <div className="container mx-auto px-6 lg:px-8">
+          <div className="flex flex-col items-center justify-between gap-8 md:flex-row">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
+                <Globe className="h-4 w-4 text-white" />
+              </div>
+              <span className="text-lg font-bold tracking-tight text-white opacity-90">Pixoranest</span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              © 2025 Pixoranest Corp. All rights reserved.
+            <p className="text-sm text-slate-500">
+              © {new Date().getFullYear()} Pixoranest Corp. All rights reserved.
             </p>
-            <div className="flex gap-6">
-              <Link to="#" className="text-sm text-muted-foreground hover:text-primary">Privacy</Link>
-              <Link to="#" className="text-sm text-muted-foreground hover:text-primary">Terms</Link>
-              <Link to="#" className="text-sm text-muted-foreground hover:text-primary">Contact</Link>
+            <div className="flex gap-8">
+              <Link to="#" className="text-sm text-slate-500 hover:text-white transition-colors">Privacy</Link>
+              <Link to="#" className="text-sm text-slate-500 hover:text-white transition-colors">Terms</Link>
+              <Link to="#" className="text-sm text-slate-500 hover:text-white transition-colors">Contact</Link>
             </div>
           </div>
         </div>
