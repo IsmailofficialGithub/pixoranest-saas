@@ -184,14 +184,16 @@ export default function NotificationsDropdown() {
         </ScrollArea>
 
         {/* Footer */}
-        <div className="border-t px-4 py-2">
-          <button
-            onClick={() => { setOpen(false); navigate("/super-admin/notifications"); }}
-            className="w-full text-center text-xs text-primary hover:underline"
-          >
-            View all notifications
-          </button>
-        </div>
+        {window.location.pathname.startsWith("/super-admin") && (
+          <div className="border-t px-4 py-2">
+            <button
+              onClick={() => { setOpen(false); navigate("/super-admin/notifications"); }}
+              className="w-full text-center text-xs text-primary hover:underline"
+            >
+              View all notifications
+            </button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

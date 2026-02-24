@@ -130,7 +130,7 @@ export default function CallLogsPage() {
   useEffect(() => {
     if (!client) return;
     (async () => {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("outbound_scheduled_calls")
         .select("id, list_id, outbound_contact_lists(name)")
         .eq("owner_user_id", client.user_id)
@@ -150,7 +150,7 @@ export default function CallLogsPage() {
     setLoading(true);
 
     // Build query
-    let query = supabase
+    let query: any = (supabase as any)
       .from("outbound_call_logs")
       .select("*", { count: "exact" })
       .eq("owner_user_id", client.user_id)
@@ -163,7 +163,7 @@ export default function CallLogsPage() {
       query = query.or(`phone.ilike.%${debouncedSearch}%,transcript.ilike.%${debouncedSearch}%`);
     }
     if (statusFilters.length > 0) {
-      query = query.in("call_status", statusFilters as any);
+      query = query.in("call_status", statusFilters);
     }
 
     const { data: logs, count, error } = await query;

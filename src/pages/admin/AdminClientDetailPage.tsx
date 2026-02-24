@@ -83,6 +83,17 @@ interface ActivityItem {
   extra?: string | null;
 }
 
+interface ServiceRequest {
+  id: string;
+  service_id: string;
+  plan_id: string | null;
+  message: string | null;
+  status: string;
+  created_at: string;
+  services: { name: string; category: string } | null;
+  service_plans: { plan_name: string } | null;
+}
+
 /* ────────── Page ────────── */
 
 export default function AdminClientDetailPage() {
@@ -99,6 +110,7 @@ export default function AdminClientDetailPage() {
   });
   const [leads, setLeads] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [usageChart, setUsageChart] = useState<{ date: string; count: number }[]>([]);
   const [serviceDistChart, setServiceDistChart] = useState<{ name: string; value: number }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -289,6 +301,17 @@ export default function AdminClientDetailPage() {
     setInvoices(data ?? []);
   }, [clientId]);
 
+  /* ── Fetch requests ── */
+  const fetchRequests = useCallback(async () => {
+    if (!clientId) return;
+    const { data } = await supabase
+      .from("service_purchase_requests")
+      .select("*, services(name, category), service_plans(plan_name)")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false });
+    setRequests((data as any[]) || []);
+  }, [clientId]);
+
   /* ── Fetch usage chart ── */
   const fetchUsageChart = useCallback(async () => {
     if (!clientId) return;
@@ -330,11 +353,31 @@ export default function AdminClientDetailPage() {
       await Promise.all([
         fetchClient(), fetchServices(), fetchStats(),
         fetchActivities(), fetchLeads(), fetchInvoices(), fetchUsageChart(),
+        fetchRequests(),
       ]);
       setLoading(false);
     };
     loadAll();
-  }, [fetchClient, fetchServices, fetchStats, fetchActivities, fetchLeads, fetchInvoices, fetchUsageChart]);
+  }, [fetchClient, fetchServices, fetchStats, fetchActivities, fetchLeads, fetchInvoices, fetchUsageChart, fetchRequests]);
+
+  /* ── Handle Request Action ── */
+  const handleRequestAction = async (requestId: string, status: "approved" | "rejected") => {
+    try {
+      const { error } = await supabase
+        .from("service_purchase_requests")
+        .update({ status })
+        .eq("id", requestId);
+      if (error) throw error;
+      toast.success(`Request ${status} successfully.`);
+      fetchRequests();
+      
+      if (status === "approved") {
+        setAssignModalOpen(true);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update request status.");
+    }
+  };
 
   /* ── Toggle status ── */
   const toggleStatus = async () => {
@@ -578,6 +621,13 @@ export default function AdminClientDetailPage() {
         <TabsList className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="services">Services</TabsTrigger>
+          <TabsTrigger value="requests">
+            Requests {requests.filter((r) => r.status === "pending").length > 0 && (
+              <Badge variant="secondary" className="ml-2 bg-amber-500/20 text-amber-700">
+                {requests.filter((r) => r.status === "pending").length}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="usage">Usage & Analytics</TabsTrigger>
           <TabsTrigger value="invoices">Invoices & Billing</TabsTrigger>
           <TabsTrigger value="leads">Leads</TabsTrigger>
@@ -732,6 +782,66 @@ export default function AdminClientDetailPage() {
                     })}
                   </TableBody>
                 </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ─── TAB: Requests ─── */}
+        <TabsContent value="requests" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Service Requests</CardTitle>
+              <CardDescription>Review and manage client requests for new services.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {requests.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Package className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p>No service requests found</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {requests.map((req) => (
+                    <div key={req.id} className="border rounded-lg p-5 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-card">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h4 className="font-semibold text-foreground text-lg">{req.services?.name || "Unknown Service"}</h4>
+                          <Badge 
+                            variant={req.status === 'pending' ? 'default' : req.status === 'approved' ? 'secondary' : 'destructive'}
+                            className={req.status === 'pending' ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-sm' : ''}
+                          >
+                            {req.status}
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <p>Requested on <span className="font-medium text-foreground">{format(new Date(req.created_at), "MMM dd, yyyy 'at' hh:mm a")}</span></p>
+                          {req.service_plans?.plan_name && (
+                            <p>Preferred Plan: <span className="font-medium text-primary">{req.service_plans.plan_name}</span></p>
+                          )}
+                        </div>
+                        {req.message && (
+                          <div className="mt-3 p-3 bg-muted/50 rounded-md border text-sm italic">
+                            <span className="text-muted-foreground font-semibold pr-2">Message:</span>
+                            "{req.message}"
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0 pt-2 md:pt-0 border-t md:border-t-0 border-border">
+                        {req.status === "pending" && (
+                          <>
+                            <Button size="sm" variant="outline" className="flex-1 md:flex-none border-destructive text-destructive hover:bg-destructive/10" onClick={() => handleRequestAction(req.id, "rejected")}>
+                              Reject
+                            </Button>
+                            <Button size="sm" className="flex-1 md:flex-none bg-primary text-primary-foreground shadow-sm" onClick={() => handleRequestAction(req.id, "approved")}>
+                              Approve & Assign
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>
