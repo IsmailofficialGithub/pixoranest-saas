@@ -17,6 +17,12 @@ import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { initiateInstantCall } from "@/lib/instant-call";
+import {
   Phone, CheckCircle, Users, Plus, MoreVertical, Play,
   FileText, ArrowRight, Lightbulb, ChevronDown, X,
   Pause, Copy, Trash2, Eye, Zap,
@@ -67,6 +73,11 @@ export default function VoiceTelecallerPage() {
   });
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [instantCallOpen, setInstantCallOpen] = useState(false);
+  const [instantCallPhone, setInstantCallPhone] = useState("");
+  const [instantCallName, setInstantCallName] = useState("");
+  const [isCalling, setIsCalling] = useState(false);
+  const [hasBot, setHasBot] = useState<boolean>(true); // assume true until checked
 
   // Check access
   const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller" || s.service_slug === "ai-voice-telecaller");
@@ -114,9 +125,20 @@ export default function VoiceTelecallerPage() {
   const fetchAllData = useCallback(async () => {
     if (!client || !serviceId) return;
     setIsLoading(true);
-    await Promise.all([fetchStats(), fetchCampaigns(), fetchRecentCalls()]);
+    await Promise.all([fetchBotStatus(), fetchStats(), fetchCampaigns(), fetchRecentCalls()]);
     setIsLoading(false);
   }, [client, serviceId]);
+
+  async function fetchBotStatus() {
+    if (!client) return;
+    const { data } = await supabase
+      .from("outboundagents")
+      .select("id")
+      .eq("owner_user_id", client.user_id)
+      .maybeSingle();
+      
+    setHasBot(!!data);
+  }
 
   async function fetchStats() {
     if (!client || !serviceId) return;
@@ -220,6 +242,22 @@ export default function VoiceTelecallerPage() {
     localStorage.setItem("hide-telecaller-tips", "true");
   };
 
+  const handleInstantCall = async () => {
+    if (!instantCallPhone) return toast.error("Phone number is required");
+    setIsCalling(true);
+    try {
+      await initiateInstantCall(instantCallPhone, instantCallName);
+      toast.success(`Calling ${instantCallPhone}...`);
+      setInstantCallOpen(false);
+      setInstantCallPhone("");
+      setInstantCallName("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to initiate call");
+    } finally {
+      setIsCalling(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -232,10 +270,22 @@ export default function VoiceTelecallerPage() {
           <Badge variant="outline" className="text-xs py-1 px-3">
             {telecallerService.usage_consumed} / {telecallerService.usage_limit} calls used
           </Badge>
-          <Button style={{ backgroundColor: primaryColor, color: "white" }} onClick={() => setWizardOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Campaign
-          </Button>
+          {!hasBot ? (
+            <Badge variant="destructive" className="text-xs py-1 px-3">
+              No Bot Assigned
+            </Badge>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setInstantCallOpen(true)}>
+                <Phone className="h-4 w-4 mr-2 text-green-500" />
+                Instant Call
+              </Button>
+              <Button style={{ backgroundColor: primaryColor, color: "white" }} onClick={() => setWizardOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Campaign
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -348,12 +398,16 @@ export default function VoiceTelecallerPage() {
                 No calling campaigns yet
               </h3>
               <p className="text-sm text-muted-foreground max-w-sm mb-6">
-                Create your first campaign to start reaching out to customers with AI-powered calls.
+                {hasBot 
+                  ? "Create your first campaign to start reaching out to customers with AI-powered calls."
+                  : "You need a connected bot to run campaigns. Please contact your admin."}
               </p>
-              <Button style={{ backgroundColor: primaryColor, color: "white" }} size="lg" onClick={() => setWizardOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Campaign
-              </Button>
+              {hasBot && (
+                <Button style={{ backgroundColor: primaryColor, color: "white" }} size="lg" onClick={() => setWizardOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Campaign
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -459,7 +513,6 @@ export default function VoiceTelecallerPage() {
           )}
         </CardContent>
       </Card>
-      {/* Campaign Wizard */}
       <CreateCampaignWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}
@@ -468,6 +521,31 @@ export default function VoiceTelecallerPage() {
         usageConsumed={telecallerService.usage_consumed}
         clientId={client?.user_id || ""}
       />
+
+      <Dialog open={instantCallOpen} onOpenChange={setInstantCallOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Instant Call</DialogTitle>
+            <DialogDescription>Make a single instant call to a customer directly.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Phone Number</Label>
+              <Input placeholder="+1234567890" value={instantCallPhone} onChange={e => setInstantCallPhone(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Customer Name (Optional)</Label>
+              <Input placeholder="John Doe" value={instantCallName} onChange={e => setInstantCallName(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInstantCallOpen(false)} disabled={isCalling}>Cancel</Button>
+            <Button onClick={handleInstantCall} disabled={isCalling} style={{ backgroundColor: primaryColor, color: "white" }}>
+              {isCalling ? "Calling..." : "Call Now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

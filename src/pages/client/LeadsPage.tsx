@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { initiateInstantCall } from "@/lib/instant-call";
 import {
   DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors,
 } from "@dnd-kit/core";
@@ -281,6 +282,16 @@ export default function LeadsPage() {
     }
   };
 
+  const handleInstantCall = async (lead: Lead) => {
+    if (!lead.phone) return;
+    try {
+      await initiateInstantCall(lead.phone, lead.name || "Customer");
+      toast({ title: "Instant Call Initiated", description: `Calling ${lead.phone}...` });
+    } catch (err: any) {
+      toast({ title: "Failed to initiate call", description: err.message, variant: "destructive" });
+    }
+  };
+
   if (contextLoading) return <PageSkeleton />;
   if (!client) return <Navigate to="/client" replace />;
 
@@ -432,6 +443,7 @@ export default function LeadsPage() {
               toast({ title: "Notes saved" });
             });
           }}
+          onInstantCall={handleInstantCall}
         />
       )}
 
@@ -913,13 +925,14 @@ function LeadFormModal({ open, onOpenChange, clientId, lead, onSaved }: {
 }
 
 /* ─── Lead Detail Panel ─── */
-function LeadDetailPanel({ lead, onClose, onEdit, onDelete, onStatusChange, onNotesUpdate }: {
+function LeadDetailPanel({ lead, onClose, onEdit, onDelete, onStatusChange, onNotesUpdate, onInstantCall }: {
   lead: Lead;
   onClose: () => void;
   onEdit: (l: Lead) => void;
   onDelete: (l: Lead) => void;
   onStatusChange: (id: string, status: string) => void;
   onNotesUpdate: (id: string, notes: string) => void;
+  onInstantCall: (l: Lead) => void;
 }) {
   const [notes, setNotes] = useState(lead.notes || "");
   const score = lead.lead_score ?? 0;
@@ -945,6 +958,9 @@ function LeadDetailPanel({ lead, onClose, onEdit, onDelete, onStatusChange, onNo
             <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-sm hover:underline">
               <Phone className="h-4 w-4" />{lead.phone}
             </a>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => onInstantCall(lead)}>
+              <Phone className="h-3 w-3 mr-1 text-green-500" /> Instant Call
+            </Button>
             {lead.email && (
               <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-sm hover:underline">
                 <Mail className="h-4 w-4" />{lead.email}

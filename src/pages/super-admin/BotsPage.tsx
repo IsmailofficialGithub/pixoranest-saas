@@ -50,6 +50,8 @@ interface BotRecord {
   account_in_use: boolean | null;
   owner_email?: string;
   owner_name?: string;
+  provider_agent_id?: string | null;
+  provider_from_number_id?: string | null;
 }
 
 interface UserOption {
@@ -88,21 +90,8 @@ export default function BotsPage() {
     owner_user_id: "",
     name: "",
     company_name: "",
-    website_url: "",
-    goal: "",
-    background: "",
-    welcome_message: "",
-    instruction_voice: "",
-    script: "",
-    voice: "alloy",
-    language: "en",
-    agent_type: "outbound",
-    tone: "professional",
-    model: "gpt-4o",
-    background_noise: "office",
-    max_timeout: "30",
-    vapi_id: "",
-    account_in_use: false
+    provider_agent_id: "",
+    provider_from_number_id: ""
   });
 
   // Debounce main search
@@ -245,6 +234,53 @@ export default function BotsPage() {
 
   useEffect(() => { setPage(0); }, [debouncedSearch]);
 
+  const ensureVoiceTelecallerService = async (ownerUserId: string) => {
+    try {
+      const { data: clientData } = await supabase
+        .from("clients")
+        .select("id, admin_id")
+        .eq("user_id", ownerUserId)
+        .single();
+        
+      if (!clientData) return;
+      
+      const { data: serviceData } = await supabase
+        .from("services")
+        .select("id")
+        .eq("slug", "voice-telecaller")
+        .single();
+        
+      if (!serviceData) return;
+      
+      const { data: existing } = await supabase
+        .from("client_services")
+        .select("id, is_active")
+        .eq("client_id", clientData.id)
+        .eq("service_id", serviceData.id)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from("client_services").insert({
+          client_id: clientData.id,
+          service_id: serviceData.id,
+          is_active: true,
+          usage_limit: 1000,
+          reset_period: 'monthly',
+          usage_consumed: 0,
+          assigned_by: clientData.admin_id,
+          last_reset_at: new Date().toISOString(),
+          assigned_at: new Date().toISOString()
+        } as any);
+      } else if (!existing.is_active) {
+        await supabase.from("client_services").update({
+          is_active: true
+        }).eq("id", existing.id);
+      }
+    } catch (e) {
+      console.error("Error auto-assigning service:", e);
+    }
+  };
+
   const handleAssign = async () => {
     if (!assignTarget || !selectedUserId) return;
     setAssigning(true);
@@ -257,6 +293,7 @@ export default function BotsPage() {
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
+      await ensureVoiceTelecallerService(selectedUserId);
       toast({ title: "Bot reassigned successfully" });
       fetchBots();
       setAssignTarget(null);
@@ -278,6 +315,7 @@ export default function BotsPage() {
     if (error) {
       toast({ title: "Error creating bot", description: error.message, variant: "destructive" });
     } else {
+      await ensureVoiceTelecallerService(formData.owner_user_id);
       toast({ title: "Bot created successfully" });
       fetchBots();
       setCreateOpen(false);
@@ -285,21 +323,8 @@ export default function BotsPage() {
         owner_user_id: "",
         name: "",
         company_name: "",
-        website_url: "",
-        goal: "",
-        background: "",
-        welcome_message: "",
-        instruction_voice: "",
-        script: "",
-        voice: "alloy",
-        language: "en",
-        agent_type: "outbound",
-        tone: "professional",
-        model: "gpt-4o",
-        background_noise: "office",
-        max_timeout: "30",
-        vapi_id: "",
-        account_in_use: false
+        provider_agent_id: "",
+        provider_from_number_id: ""
       });
       setUserSearchTerm("");
     }
@@ -311,17 +336,8 @@ export default function BotsPage() {
       ...prev,
       name: "Smart Support AI",
       company_name: "TechSolutions Inc",
-      website_url: "https://techsolutions.example.com",
-      goal: "Assist customers with technical troubleshooting and plan upgrades.",
-      background: "A professional and friendly assistant for a software hosting company.",
-      welcome_message: "Hello! This is Sam from TechSolutions. How can I help you today?",
-      instruction_voice: "Speak slowly and clearly. Always confirm technical details before proceeding.",
-      script: "You are a senior support agent. Your primary task is to identify if the user is calling about a technical issue or a billing inquiry. If technical, ask for the error code. If billing, offer a 10% discount on annual plans.",
-      voice: "shimmer",
-      language: "en-US",
-      tone: "helpful",
-      model: "gpt-4o",
-      max_timeout: "60"
+      provider_agent_id: "agent_12345",
+      provider_from_number_id: "num_12345"
     }));
     toast({ title: "Form Auto-filled", description: "Default values have been applied." });
   };
@@ -482,7 +498,7 @@ export default function BotsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Owner (Search Email)</Label>
+                <Label>Assigned User (Search Email)</Label>
                 <div className="relative">
                   <Input 
                     placeholder="Search user by email (min 2 chars)..." 
@@ -514,99 +530,26 @@ export default function BotsPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Bot Name</Label>
-                  <Input value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))} placeholder="My Bot" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Company Name</Label>
-                  <Input value={formData.company_name} onChange={e => setFormData(f => ({ ...f, company_name: e.target.value }))} placeholder="Bot Corp" />
-                </div>
+              <div className="space-y-2">
+                <Label>Bot Name</Label>
+                <Input value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))} placeholder="My Bot" />
               </div>
 
               <div className="space-y-2">
-                <Label>Website URL</Label>
-                <Input value={formData.website_url} onChange={e => setFormData(f => ({ ...f, website_url: e.target.value }))} placeholder="https://..." />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Model</Label>
-                  <Select value={formData.model} onValueChange={v => setFormData(f => ({ ...f, model: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="gpt-4">GPT-4</SelectItem>
-                      <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Voice</Label>
-                  <Select value={formData.voice} onValueChange={v => setFormData(f => ({ ...f, voice: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="alloy">Alloy</SelectItem>
-                      <SelectItem value="echo">Echo</SelectItem>
-                      <SelectItem value="fable">Fable</SelectItem>
-                      <SelectItem value="onyx">Onyx</SelectItem>
-                      <SelectItem value="nova">Nova</SelectItem>
-                      <SelectItem value="shimmer">Shimmer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Language</Label>
-                  <Input value={formData.language} onChange={e => setFormData(f => ({ ...f, language: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Agent Type</Label>
-                  <Input value={formData.agent_type} onChange={e => setFormData(f => ({ ...f, agent_type: e.target.value }))} />
-                </div>
+                <Label>Company Name</Label>
+                <Input value={formData.company_name} onChange={e => setFormData(f => ({ ...f, company_name: e.target.value }))} placeholder="Bot Corp" />
               </div>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Goal</Label>
-                <Textarea value={formData.goal} onChange={e => setFormData(f => ({ ...f, goal: e.target.value }))} placeholder="What should the bot achieve?" />
+                <Label>Provider Agent ID</Label>
+                <Input value={formData.provider_agent_id} onChange={e => setFormData(f => ({ ...f, provider_agent_id: e.target.value }))} placeholder="agent_xyz" />
               </div>
+              
               <div className="space-y-2">
-                <Label>Background</Label>
-                <Textarea value={formData.background} onChange={e => setFormData(f => ({ ...f, background: e.target.value }))} placeholder="Context for the bot..." />
-              </div>
-              <div className="space-y-2">
-                <Label>Welcome Message</Label>
-                <Input value={formData.welcome_message} onChange={e => setFormData(f => ({ ...f, welcome_message: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Vapi ID (Optional)</Label>
-                <Input value={formData.vapi_id} onChange={e => setFormData(f => ({ ...f, vapi_id: e.target.value }))} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-2">
-                   <Label>Tone</Label>
-                   <Input value={formData.tone} onChange={e => setFormData(f => ({ ...f, tone: e.target.value }))} />
-                 </div>
-                 <div className="space-y-2">
-                   <Label>Max Timeout (s)</Label>
-                   <Input value={formData.max_timeout} onChange={e => setFormData(f => ({ ...f, max_timeout: e.target.value }))} />
-                 </div>
-              </div>
-            </div>
-
-            <div className="md:col-span-2 space-y-4">
-              <div className="space-y-2">
-                <Label>Instructions</Label>
-                <Textarea value={formData.instruction_voice} onChange={e => setFormData(f => ({ ...f, instruction_voice: e.target.value }))} className="h-24" />
-              </div>
-              <div className="space-y-2">
-                <Label>Script / Core Prompt</Label>
-                <Textarea value={formData.script} onChange={e => setFormData(f => ({ ...f, script: e.target.value }))} className="h-32 font-mono text-xs" />
+                <Label>Provider From Number ID</Label>
+                <Input value={formData.provider_from_number_id} onChange={e => setFormData(f => ({ ...f, provider_from_number_id: e.target.value }))} placeholder="num_xyz" />
               </div>
             </div>
           </div>

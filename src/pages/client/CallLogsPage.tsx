@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { initiateInstantCall } from "@/lib/instant-call";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -554,7 +555,14 @@ export default function CallLogsPage() {
                             : "—"}
                         </TableCell>
                         <TableCell>
-                          <CallActions call={call} onPlay={setPlayerCall} onTranscript={setTranscriptCall} onMarkLead={setLeadModal} navigate={navigate} />
+                          <CallActions call={call} onPlay={setPlayerCall} onTranscript={setTranscriptCall} onMarkLead={setLeadModal} navigate={navigate} onInstantCall={async (c) => {
+                            try {
+                              await initiateInstantCall(c.phone_number, c.contact_name || "Customer");
+                              toast.success(`Calling ${c.phone_number}...`);
+                            } catch (err: any) {
+                              toast.error("Failed to initiate call: " + err.message);
+                            }
+                          }} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -616,7 +624,14 @@ export default function CallLogsPage() {
                             <Users className="h-3 w-3 mr-1" /> Lead
                           </Button>
                         )}
-                        <CallActions call={call} onPlay={setPlayerCall} onTranscript={setTranscriptCall} onMarkLead={setLeadModal} navigate={navigate} compact />
+                        <CallActions call={call} onPlay={setPlayerCall} onTranscript={setTranscriptCall} onMarkLead={setLeadModal} navigate={navigate} onInstantCall={async (c) => {
+                          try {
+                            await initiateInstantCall(c.phone_number, c.contact_name || "Customer");
+                            toast.success(`Calling ${c.phone_number}...`);
+                          } catch (err: any) {
+                            toast.error("Failed to initiate call: " + err.message);
+                          }
+                        }} compact />
                       </div>
                     </div>
                   </CardContent>
@@ -686,13 +701,14 @@ function CallStatusBadge({ status }: { status: string | null }) {
 }
 
 function CallActions({
-  call, onPlay, onTranscript, onMarkLead, navigate, compact,
+  call, onPlay, onTranscript, onMarkLead, navigate, compact, onInstantCall
 }: {
   call: CallLogEntry;
   onPlay: (c: CallLogEntry) => void;
   onTranscript: (c: CallLogEntry) => void;
   onMarkLead: (c: CallLogEntry) => void;
   navigate: (path: string) => void;
+  onInstantCall?: (c: CallLogEntry) => void;
   compact?: boolean;
 }) {
   return (
@@ -711,6 +727,11 @@ function CallActions({
         {call.transcript && (
           <DropdownMenuItem onClick={() => onTranscript(call)}>
             <FileText className="h-3 w-3 mr-2" /> View Transcript
+          </DropdownMenuItem>
+        )}
+        {onInstantCall && (
+          <DropdownMenuItem onClick={() => onInstantCall(call)}>
+            <Phone className="h-3 w-3 mr-2 text-green-500" /> Instant Call
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
