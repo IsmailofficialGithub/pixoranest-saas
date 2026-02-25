@@ -131,8 +131,7 @@ export default function VoiceTelecallerPage() {
 
   async function fetchBotStatus() {
     if (!client) return;
-    const { data } = await supabase
-      .from("outboundagents")
+    const { data } = await (supabase as any).from("outboundagents")
       .select("id")
       .eq("owner_user_id", client.user_id)
       .maybeSingle();
@@ -147,12 +146,12 @@ export default function VoiceTelecallerPage() {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
     const [callsRes, leadsRes] = await Promise.all([
-      supabase
+      (supabase as any)
         .from("outbound_call_logs")
         .select("call_status")
         .eq("owner_user_id", client.user_id)
         .gte("created_at", monthStart),
-      supabase
+      (supabase as any)
         .from("outbound_call_logs")
         .select("id", { count: "exact", head: true })
         .eq("owner_user_id", client.user_id)
@@ -160,7 +159,7 @@ export default function VoiceTelecallerPage() {
         .gte("created_at", monthStart),
     ]);
 
-    const calls = callsRes.data || [];
+    const calls = (callsRes.data as any[]) || [];
     const completed = calls.filter(c => c.call_status === "completed" || c.call_status === "answered").length;
     const total = calls.length;
 
@@ -174,8 +173,7 @@ export default function VoiceTelecallerPage() {
 
   async function fetchCampaigns() {
     if (!client) return;
-    const { data } = await supabase
-      .from("outbound_scheduled_calls")
+    const { data } = await (supabase as any).from("outbound_scheduled_calls")
       .select(`
         id, status, scheduled_at, created_at, list_id,
         outbound_contact_lists ( name )
@@ -198,8 +196,7 @@ export default function VoiceTelecallerPage() {
 
   async function fetchRecentCalls() {
     if (!client || !serviceId) return;
-    const { data } = await supabase
-      .from("outbound_call_logs")
+    const { data } = await (supabase as any).from("outbound_call_logs")
       .select("id, phone, duration, call_status, transcript, created_at, call_url, call_type, name")
       .eq("owner_user_id", client.user_id)
       .order("created_at", { ascending: false })
@@ -598,8 +595,7 @@ function CampaignCard({
   async function updateStatus(newStatus: string) {
     setIsUpdating(true);
     try {
-      const { error } = await supabase
-        .from("outbound_scheduled_calls")
+      const { error } = await (supabase as any).from("outbound_scheduled_calls")
         .update({ status: newStatus })
         .eq("id", campaign.id);
       if (error) throw error;
@@ -615,9 +611,9 @@ function CampaignCard({
     if (!confirm("Are you sure you want to delete this campaign? this will wipe all calls queues.")) return;
     setIsUpdating(true);
     try {
-      const { error } = await supabase.from("outbound_scheduled_calls").delete().eq("id", campaign.id);
+      const { error } = await (supabase as any).from("outbound_scheduled_calls").delete().eq("id", campaign.id);
       if (campaign.list_id) {
-        await supabase.from("outbound_contact_lists").delete().eq("id", campaign.list_id);
+        await (supabase as any).from("outbound_contact_lists").delete().eq("id", campaign.list_id);
       }
       if (error) throw error;
       toast.success("Campaign deleted successfully");
