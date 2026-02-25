@@ -52,7 +52,7 @@ const ClientContext = createContext<ClientContextType>({
   primaryColor: "#3B82F6",
   secondaryColor: "#10B981",
   isLoading: true,
-  refetchClient: async () => {},
+  refetchClient: async () => { },
 });
 
 export const useClient = () => useContext(ClientContext);

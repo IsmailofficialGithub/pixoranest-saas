@@ -136,7 +136,7 @@ export default function VoiceTelecallerPage() {
       .select("id")
       .eq("owner_user_id", client.user_id)
       .maybeSingle();
-      
+
     setHasBot(!!data);
   }
 
@@ -246,7 +246,7 @@ export default function VoiceTelecallerPage() {
     if (!instantCallPhone) return toast.error("Phone number is required");
     setIsCalling(true);
     try {
-      await initiateInstantCall(instantCallPhone, instantCallName);
+      await initiateInstantCall(instantCallPhone, instantCallName, client.user_id);
       toast.success(`Calling ${instantCallPhone}...`);
       setInstantCallOpen(false);
       setInstantCallPhone("");
@@ -398,7 +398,7 @@ export default function VoiceTelecallerPage() {
                 No calling campaigns yet
               </h3>
               <p className="text-sm text-muted-foreground max-w-sm mb-6">
-                {hasBot 
+                {hasBot
                   ? "Create your first campaign to start reaching out to customers with AI-powered calls."
                   : "You need a connected bot to run campaigns. Please contact your admin."}
               </p>

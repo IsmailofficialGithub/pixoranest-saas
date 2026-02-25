@@ -136,7 +136,7 @@ export default function CallLogsPage() {
         .select("id, list_id, outbound_contact_lists(name)")
         .eq("owner_user_id", client.user_id)
         .order("created_at", { ascending: false });
-      
+
       const mapped = (data || []).map((d: any) => ({
         id: d.id,
         campaign_name: d.outbound_contact_lists?.name || 'Outbound Campaign'
@@ -202,7 +202,7 @@ export default function CallLogsPage() {
         campaign_id: l.scheduled_call_id || null,
         campaign_name: l.scheduled_call_id ? campaignMap.get(l.scheduled_call_id) || null : null,
         lead_id: null, // Logic for getting lead ID from `leads` table if necessary can be added here
-        lead_score: null, 
+        lead_score: null,
       };
     });
 
@@ -409,11 +409,10 @@ export default function CallLogsPage() {
                     <button
                       key={s}
                       onClick={() => toggleStatus(s)}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                        statusFilters.includes(s)
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-background text-foreground border-border hover:bg-muted"
-                      }`}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${statusFilters.includes(s)
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-foreground border-border hover:bg-muted"
+                        }`}
                     >
                       {CALL_STATUS_CONFIG[s]?.label || s}
                     </button>
@@ -540,11 +539,10 @@ export default function CallLogsPage() {
                         </TableCell>
                         <TableCell>
                           {call.lead_score != null ? (
-                            <Badge className={`text-xs ${
-                              call.lead_score > 70 ? "bg-green-100 text-green-700" :
+                            <Badge className={`text-xs ${call.lead_score > 70 ? "bg-green-100 text-green-700" :
                               call.lead_score > 40 ? "bg-yellow-100 text-yellow-700" :
-                              "bg-red-100 text-red-700"
-                            } border-0`}>
+                                "bg-red-100 text-red-700"
+                              } border-0`}>
                               {call.lead_score}/100
                             </Badge>
                           ) : <span className="text-muted-foreground text-xs">—</span>}
@@ -557,7 +555,7 @@ export default function CallLogsPage() {
                         <TableCell>
                           <CallActions call={call} onPlay={setPlayerCall} onTranscript={setTranscriptCall} onMarkLead={setLeadModal} navigate={navigate} onInstantCall={async (c) => {
                             try {
-                              await initiateInstantCall(c.phone_number, c.contact_name || "Customer");
+                              await initiateInstantCall(c.phone_number, c.contact_name || "Customer", client.user_id);
                               toast.success(`Calling ${c.phone_number}...`);
                             } catch (err: any) {
                               toast.error("Failed to initiate call: " + err.message);
@@ -591,11 +589,10 @@ export default function CallLogsPage() {
                     </div>
                     {call.lead_score != null && (
                       <div className="flex items-center gap-1">
-                        <Badge className={`text-[10px] ${
-                          call.lead_score > 70 ? "bg-green-100 text-green-700" :
+                        <Badge className={`text-[10px] ${call.lead_score > 70 ? "bg-green-100 text-green-700" :
                           call.lead_score > 40 ? "bg-yellow-100 text-yellow-700" :
-                          "bg-red-100 text-red-700"
-                        } border-0`}>
+                            "bg-red-100 text-red-700"
+                          } border-0`}>
                           🎯 {call.lead_score}/100
                         </Badge>
                       </div>
@@ -626,7 +623,7 @@ export default function CallLogsPage() {
                         )}
                         <CallActions call={call} onPlay={setPlayerCall} onTranscript={setTranscriptCall} onMarkLead={setLeadModal} navigate={navigate} onInstantCall={async (c) => {
                           try {
-                            await initiateInstantCall(c.phone_number, c.contact_name || "Customer");
+                            await initiateInstantCall(c.phone_number, c.contact_name || "Customer", client.user_id);
                             toast.success(`Calling ${c.phone_number}...`);
                           } catch (err: any) {
                             toast.error("Failed to initiate call: " + err.message);
@@ -920,11 +917,10 @@ function AudioPlayerModal({
               {transcriptLines.map((line, i) => (
                 <div
                   key={i}
-                  className={`flex gap-2 p-1 rounded cursor-pointer hover:bg-background/50 transition-colors ${
-                    line.time <= currentTime && (transcriptLines[i + 1]?.time ?? Infinity) > currentTime
-                      ? "bg-background shadow-sm"
-                      : ""
-                  }`}
+                  className={`flex gap-2 p-1 rounded cursor-pointer hover:bg-background/50 transition-colors ${line.time <= currentTime && (transcriptLines[i + 1]?.time ?? Infinity) > currentTime
+                    ? "bg-background shadow-sm"
+                    : ""
+                    }`}
                   onClick={() => {
                     if (audioRef.current && line.time) {
                       audioRef.current.currentTime = line.time;
@@ -935,9 +931,8 @@ function AudioPlayerModal({
                     <span className="text-muted-foreground shrink-0 font-mono">[{line.timeStr}]</span>
                   )}
                   {line.speaker && (
-                    <span className={`font-medium shrink-0 ${
-                      line.speaker.toLowerCase().includes("ai") ? "text-blue-600" : "text-green-600"
-                    }`}>
+                    <span className={`font-medium shrink-0 ${line.speaker.toLowerCase().includes("ai") ? "text-blue-600" : "text-green-600"
+                      }`}>
                       {line.speaker}:
                     </span>
                   )}

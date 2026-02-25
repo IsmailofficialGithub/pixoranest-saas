@@ -285,7 +285,7 @@ export default function LeadsPage() {
   const handleInstantCall = async (lead: Lead) => {
     if (!lead.phone) return;
     try {
-      await initiateInstantCall(lead.phone, lead.name || "Customer");
+      await initiateInstantCall(lead.phone, lead.name || "Customer", client.user_id);
       toast({ title: "Instant Call Initiated", description: `Calling ${lead.phone}...` });
     } catch (err: any) {
       toast({ title: "Failed to initiate call", description: err.message, variant: "destructive" });
@@ -502,9 +502,9 @@ function KanbanView({ leads, onStatusChange, onViewDetail, onEdit, onDelete, onA
                 </div>
               </div>
               <SortableContext items={columnLeads.map(l => l.id)} strategy={verticalListSortingStrategy}>
-                <div className="p-2 space-y-2 min-h-[100px]" 
+                <div className="p-2 space-y-2 min-h-[100px]"
                   onDragOver={e => e.preventDefault()}
-                  onDrop={() => {}}>
+                  onDrop={() => { }}>
                   {columnLeads.map(lead => (
                     <KanbanCard key={lead.id} lead={lead} onView={onViewDetail}
                       onEdit={onEdit} onDelete={onDelete} onStatusChange={onStatusChange} />

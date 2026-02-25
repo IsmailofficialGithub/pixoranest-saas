@@ -50,8 +50,8 @@ interface BotRecord {
   account_in_use: boolean | null;
   owner_email?: string;
   owner_name?: string;
-  provider_agent_id?: string | null;
-  provider_from_number_id?: string | null;
+  provider_agent_id?: string;
+  provider_from_number_id?: string;
 }
 
 interface UserOption {
@@ -85,7 +85,7 @@ export default function BotsPage() {
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [userSearchResults, setUserSearchResults] = useState<UserOption[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     owner_user_id: "",
     name: "",
@@ -115,7 +115,7 @@ export default function BotsPage() {
         .select("user_id, email, full_name")
         .ilike("email", `%${userSearchTerm}%`)
         .limit(20);
-      
+
       if (profileError || !profileData || profileData.length === 0) {
         setUserSearchResults([]);
         setSearchingUsers(false);
@@ -154,7 +154,7 @@ export default function BotsPage() {
       .from("clients")
       .select("user_id")
       .limit(50);
-    
+
     if (clientError || !clientData || clientData.length === 0) return;
 
     const userIds = clientData.map(c => c.user_id);
@@ -175,15 +175,15 @@ export default function BotsPage() {
   const fetchBots = useCallback(async () => {
     setLoading(true);
     const { data: botsData, error } = await supabase
-      .from("outboundagents" as any) 
+      .from("outboundagents" as any)
       .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
-      toast({ 
-        title: "Error fetching bots", 
-        description: "Make sure the 'outboundagents' table exists in your database.", 
-        variant: "destructive" 
+      toast({
+        title: "Error fetching bots",
+        description: "Make sure the 'outboundagents' table exists in your database.",
+        variant: "destructive"
       });
       setLoading(false);
       return;
@@ -241,17 +241,17 @@ export default function BotsPage() {
         .select("id, admin_id")
         .eq("user_id", ownerUserId)
         .single();
-        
+
       if (!clientData) return;
-      
+
       const { data: serviceData } = await supabase
         .from("services")
         .select("id")
         .eq("slug", "voice-telecaller")
         .single();
-        
+
       if (!serviceData) return;
-      
+
       const { data: existing } = await supabase
         .from("client_services")
         .select("id, is_active")
@@ -302,15 +302,25 @@ export default function BotsPage() {
   };
 
   const handleCreateBot = async () => {
-    if (!formData.owner_user_id || !formData.name || !formData.company_name) {
-      toast({ title: "Missing fields", description: "Name, Company, and Owner are required.", variant: "destructive" });
+    if (!formData.owner_user_id || !formData.name || !formData.provider_agent_id || !formData.provider_from_number_id) {
+      toast({
+        title: "Missing fields",
+        description: "Bot Name, Assigned User, Provider Agent ID and From Number ID are required.",
+        variant: "destructive"
+      });
       return;
     }
 
     setCreating(true);
+    // If company_name is required in DB but not in form, use bot name as fallback
+    const payload = {
+      ...formData,
+      company_name: formData.company_name || formData.name
+    };
+
     const { error } = await supabase
       .from("outboundagents" as any)
-      .insert([formData]);
+      .insert([payload]);
 
     if (error) {
       toast({ title: "Error creating bot", description: error.message, variant: "destructive" });
@@ -335,7 +345,6 @@ export default function BotsPage() {
     setFormData(prev => ({
       ...prev,
       name: "Smart Support AI",
-      company_name: "TechSolutions Inc",
       provider_agent_id: "agent_12345",
       provider_from_number_id: "num_12345"
     }));
@@ -458,19 +467,19 @@ export default function BotsPage() {
           </div>
 
           <div className="flex items-center justify-between mt-4">
-             <div className="text-sm text-muted-foreground">
-               Total {filtered.length} bots
-             </div>
-             {totalPages > 1 && (
-               <div className="flex gap-2">
-                 <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
-                   Prev
-                 </Button>
-                 <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
-                   Next
-                 </Button>
-               </div>
-             )}
+            <div className="text-sm text-muted-foreground">
+              Total {filtered.length} bots
+            </div>
+            {totalPages > 1 && (
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
+                  Prev
+                </Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
+                  Next
+                </Button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -494,14 +503,14 @@ export default function BotsPage() {
               Auto-fill Defaults
             </Button>
           </DialogHeader>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Assigned User (Search Email)</Label>
                 <div className="relative">
-                  <Input 
-                    placeholder="Search user by email (min 2 chars)..." 
+                  <Input
+                    placeholder="Search user by email (min 2 chars)..."
                     value={userSearchTerm}
                     onChange={(e) => setUserSearchTerm(e.target.value)}
                   />
@@ -510,8 +519,8 @@ export default function BotsPage() {
                 {userSearchResults.length > 0 && (
                   <div className="absolute z-50 border rounded-md mt-1 max-h-40 overflow-y-auto bg-card shadow-lg w-[320px]">
                     {userSearchResults.map(u => (
-                      <div 
-                        key={u.id} 
+                      <div
+                        key={u.id}
                         className={`p-2 hover:bg-muted cursor-pointer text-sm ${formData.owner_user_id === u.id ? 'bg-primary/10 border-l-2 border-primary' : ''}`}
                         onClick={() => {
                           setFormData(prev => ({ ...prev, owner_user_id: u.id }));
@@ -534,11 +543,6 @@ export default function BotsPage() {
                 <Label>Bot Name</Label>
                 <Input value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))} placeholder="My Bot" />
               </div>
-
-              <div className="space-y-2">
-                <Label>Company Name</Label>
-                <Input value={formData.company_name} onChange={e => setFormData(f => ({ ...f, company_name: e.target.value }))} placeholder="Bot Corp" />
-              </div>
             </div>
 
             <div className="space-y-4">
@@ -546,7 +550,7 @@ export default function BotsPage() {
                 <Label>Provider Agent ID</Label>
                 <Input value={formData.provider_agent_id} onChange={e => setFormData(f => ({ ...f, provider_agent_id: e.target.value }))} placeholder="agent_xyz" />
               </div>
-              
+
               <div className="space-y-2">
                 <Label>Provider From Number ID</Label>
                 <Input value={formData.provider_from_number_id} onChange={e => setFormData(f => ({ ...f, provider_from_number_id: e.target.value }))} placeholder="num_xyz" />
@@ -586,13 +590,13 @@ export default function BotsPage() {
                   <p className="text-sm"><strong>Language:</strong> {viewTarget.language}</p>
                 </div>
                 <div>
-                   <Label className="text-xs text-muted-foreground">Vapi</Label>
-                   <p className="text-xs font-mono">{viewTarget.vapi_id || "None"}</p>
+                  <Label className="text-xs text-muted-foreground">Vapi</Label>
+                  <p className="text-xs font-mono">{viewTarget.vapi_id || "None"}</p>
                 </div>
               </div>
               <div className="space-y-4">
-                 <div><Label className="text-xs text-muted-foreground">Goal</Label><p className="text-sm">{viewTarget.goal}</p></div>
-                 <div><Label className="text-xs text-muted-foreground">Welcome</Label><p className="text-sm">{viewTarget.welcome_message}</p></div>
+                <div><Label className="text-xs text-muted-foreground">Goal</Label><p className="text-sm">{viewTarget.goal}</p></div>
+                <div><Label className="text-xs text-muted-foreground">Welcome</Label><p className="text-sm">{viewTarget.welcome_message}</p></div>
               </div>
             </div>
           )}
@@ -603,12 +607,12 @@ export default function BotsPage() {
       </Dialog>
 
       {/* Assign Dialog */}
-      <Dialog open={!!assignTarget} onOpenChange={(open) => { 
+      <Dialog open={!!assignTarget} onOpenChange={(open) => {
         if (!open) {
           setAssignTarget(null);
           setUserSearchTerm("");
           setUserSearchResults([]);
-        } 
+        }
       }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Assign Bot</DialogTitle></DialogHeader>
@@ -616,8 +620,8 @@ export default function BotsPage() {
             <div className="space-y-2 relative">
               <Label>Search Client Email (min 2 chars)</Label>
               <div className="relative">
-                <Input 
-                  placeholder="Search user by email..." 
+                <Input
+                  placeholder="Search user by email..."
                   value={userSearchTerm}
                   onChange={(e) => setUserSearchTerm(e.target.value)}
                 />
@@ -626,8 +630,8 @@ export default function BotsPage() {
               {userSearchResults.length > 0 && (
                 <div className="absolute z-50 border rounded-md mt-1 max-h-40 overflow-y-auto bg-card shadow-lg w-full">
                   {userSearchResults.map(u => (
-                    <div 
-                      key={u.id} 
+                    <div
+                      key={u.id}
                       className={`p-2 hover:bg-muted cursor-pointer text-sm ${selectedUserId === u.id ? 'bg-primary/10' : ''}`}
                       onClick={() => {
                         setSelectedUserId(u.id);
@@ -643,9 +647,9 @@ export default function BotsPage() {
               )}
             </div>
             {selectedUserId && (
-               <p className="text-xs text-green-600 font-medium font-mono">
-                 Selected: {selectedUserId}
-               </p>
+              <p className="text-xs text-green-600 font-medium font-mono">
+                Selected: {selectedUserId}
+              </p>
             )}
           </div>
           <DialogFooter>
