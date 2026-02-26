@@ -153,19 +153,19 @@ export default function VoiceTelecallerPage() {
 
     const [callsRes, leadsRes] = await Promise.all([
       supabase
-        .from("call_logs")
-        .select("status")
-        .eq("client_id", client.id)
-        .gte("executed_at", monthStart),
+        .from("outbound_call_logs" as any)
+        .select("call_status")
+        .eq("owner_user_id", client.user_id)
+        .gte("created_at", monthStart),
       supabase
-        .from("leads")
+        .from("outbound_leads" as any)
         .select("id", { count: "exact", head: true })
-        .eq("client_id", client.id)
+        .eq("owner_user_id", client.user_id)
         .gte("created_at", monthStart),
     ]);
 
     const calls = (callsRes.data as any[]) || [];
-    const completed = calls.filter(c => c.status === "completed" || c.status === "answered").length;
+    const completed = calls.filter(c => c.call_status === "completed" || c.call_status === "answered").length;
     const total = calls.length;
 
     setStats({
@@ -198,23 +198,23 @@ export default function VoiceTelecallerPage() {
 
   async function fetchRecentCalls() {
     if (!client || !serviceId) return;
-    const { data } = await supabase.from("call_logs")
-      .select("id, phone_number, duration_seconds, status, transcript, executed_at, recording_url, call_type, ai_summary")
-      .eq("client_id", client.id)
-      .order("executed_at", { ascending: false })
+    const { data } = await supabase.from("outbound_call_logs" as any)
+      .select("id, phone, duration, call_status, transcript, created_at, call_url, call_type, name")
+      .eq("owner_user_id", client.user_id)
+      .order("created_at", { ascending: false })
       .limit(10);
 
     if (data) {
       const mapped = data.map((d: any) => ({
         id: d.id,
-        phone_number: d.phone_number,
-        duration_seconds: d.duration_seconds || 0,
-        status: d.status || 'unknown',
-        ai_summary: d.ai_summary || d.transcript,
-        executed_at: d.executed_at,
-        recording_url: d.recording_url,
+        phone_number: d.phone,
+        duration_seconds: d.duration || 0,
+        status: d.call_status || 'unknown',
+        ai_summary: d.transcript,
+        executed_at: d.created_at,
+        recording_url: d.call_url,
         call_type: d.call_type,
-        contact_name: d.phone_number // Can be fetched from metadata if populated
+        contact_name: d.name || d.phone
       }));
       setRecentCalls(mapped);
     }
@@ -222,12 +222,12 @@ export default function VoiceTelecallerPage() {
 
   async function fetchOutboundLeads() {
     if (!client) return;
-    const { data } = await supabase.from("leads")
+    const { data } = await supabase.from("outbound_leads" as any)
       .select(`
         id, status, notes, created_at, phone, name,
-        call_logs ( id, transcript )
+        outbound_call_logs ( id, transcript )
       `)
-      .eq("client_id", client.id)
+      .eq("owner_user_id", client.user_id)
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -239,8 +239,8 @@ export default function VoiceTelecallerPage() {
         created_at: d.created_at,
         phone: d.phone,
         name: d.name,
-        transcript: d.call_logs?.[0]?.transcript || d.call_logs?.transcript,
-        call_log_id: d.call_logs?.[0]?.id || d.call_logs?.id
+        transcript: d.outbound_call_logs?.[0]?.transcript || d.outbound_call_logs?.transcript,
+        call_log_id: d.outbound_call_logs?.[0]?.id || d.outbound_call_logs?.id
       }));
       setOutboundLeads(mapped);
     }
@@ -335,8 +335,8 @@ export default function VoiceTelecallerPage() {
           color={primaryColor}
           label="Leads Captured"
           value={stats?.leadsCount ?? 0}
-          // linkText="View Leads"
-          // onLinkClick={() => navigate("/client/leads")}
+        // linkText="View Leads"
+        // onLinkClick={() => navigate("/client/leads")}
         />
       </div>
 
@@ -727,7 +727,7 @@ export default function VoiceTelecallerPage() {
                   <span>{selectedCallData.time ? formatDistanceToNow(new Date(selectedCallData.time), { addSuffix: true }) : "—"}</span>
                 </div>
               </div>
-              
+
               <div className="border-t pt-4 mt-4">
                 <span className="font-semibold text-muted-foreground block mb-2">Transcript / AI Summary</span>
                 <div className="bg-muted p-4 rounded-md text-sm whitespace-pre-wrap">
@@ -905,10 +905,12 @@ function CallStatusBadge({ status }: { status: string }) {
   return <Badge variant={c.variant} className="text-[10px]">{c.label}</Badge>;
 }
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return "0s";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+function formatDuration(seconds: any): string {
+  const totalSeconds = Number(seconds);
+  if (!totalSeconds || isNaN(totalSeconds)) return "0s";
+
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60);
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
