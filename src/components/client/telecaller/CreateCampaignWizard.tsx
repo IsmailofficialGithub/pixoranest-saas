@@ -394,6 +394,10 @@ export default function CreateCampaignWizard({
       if (campError || !campaign) throw campError || new Error("Failed to create campaign");
       setLaunchStep(4);
 
+      const {data:agent_id,error:agentError}=await supabase.from("outboundagents").select("id").eq("owner_user_id",userId).eq("status",'active').single();
+      if(agentError||!agent_id) throw agentError||new Error("Failed to get agent id");
+
+      
       // Trigger workflow (best-effort)
       try {
         const webhookUrl = import.meta.env.VITE_N8N_OUTBOUND_LIST_IMMEDIATE_CALLS_WEBHOOK;
@@ -405,6 +409,7 @@ export default function CreateCampaignWizard({
             },
             body: JSON.stringify({
               campaign_id: campaign.id,
+              agent_id: agent_id.id,
               client_id: clientId,
               list_id: list.id,
               campaign_name: data.campaignName,
