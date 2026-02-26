@@ -302,21 +302,15 @@ export default function CreateCampaignWizard({
 
   async function handleSaveAsDraft() {
     try {
-      const { data: list, error: listErr } = await supabase.from("outbound_contact_lists").insert({
-        owner_user_id: clientId,
-        name: data.campaignName,
-        description: data.script || null,
-      }).select("id").single();
-      
-      if (listErr || !list) throw listErr || new Error("Failed to create list");
-
       const schedAt = data.scheduleType === "later" && data.scheduledAt
         ? new Date(data.scheduledAt).toISOString()
         : new Date().toISOString();
 
-      const { error } = await supabase.from("outbound_scheduled_calls").insert({
-        owner_user_id: clientId,
-        list_id: list.id,
+      const { error } = await supabase.from("voice_campaigns").insert({
+        client_id: clientId,
+        campaign_name: data.campaignName,
+        script: data.script || null,
+        campaign_type: "telecaller",
         status: "draft",
         scheduled_at: schedAt,
       });
@@ -338,62 +332,90 @@ export default function CreateCampaignWizard({
     setLaunchStep(1);
 
     try {
-      // Step 1: Create Contact List
-      const { data: list, error: listError } = await supabase
-        .from("outbound_contact_lists")
+      // Step 1: Create Campaign
+      const schedAt = data.scheduleType === "later" && data.scheduledAt
+        ? new Date(data.scheduledAt).toISOString()
+        : new Date().toISOString();
+
+      const { data: campaign, error: campError } = await supabase
+        .from("voice_campaigns")
         .insert({
-          owner_user_id: clientId,
-          name: data.campaignName,
-          description: data.script || null,
+          client_id: clientId,
+          campaign_name: data.campaignName,
+          script: data.script || null,
+          campaign_type: "telecaller",
+          status: data.scheduleType === "later" ? "scheduled" : "running",
+          scheduled_at: schedAt,
         })
         .select("id")
         .single();
 
-      if (listError || !list) throw listError || new Error("Failed to create contact list");
+      if (campError || !campaign) throw campError || new Error("Failed to create campaign");
       setLaunchStep(2);
 
       // Step 2: Insert contacts in batches
       const BATCH = 500;
       for (let i = 0; i < validContacts.length; i += BATCH) {
         const batch = validContacts.slice(i, i + BATCH).map(c => ({
-          list_id: list.id,
+          campaign_id: campaign.id,
           phone_number: c.phone,
-          name: c.name || "Unknown",
-          email: c.email || null,
-          extra_data: { company: c.company },
+          contact_name: c.name || "Unknown",
+          contact_data: { email: c.email, company: c.company },
         }));
         const { error: contactErr } = await supabase
-          .from("outbound_contacts")
+          .from("campaign_contacts")
           .insert(batch);
         if (contactErr) throw contactErr;
       }
       setLaunchStep(3);
 
-      // Step 3: Create Scheduled Call
-      const schedAt = data.scheduleType === "later" && data.scheduledAt
-        ? new Date(data.scheduledAt).toISOString()
-        : new Date().toISOString();
-
-      const { data: campaign, error: campError } = await supabase
-        .from("outbound_scheduled_calls")
-        .insert({
-          owner_user_id: clientId,
-          list_id: list.id,
-          status: data.scheduleType === "later" ? "scheduled" : "pending",
-          scheduled_at: schedAt,
-        })
-        .select("id")
-        .single();
-
-      if (campError || !campaign) throw campError || new Error("Failed to create scheduled call");
+      // (Skip Step 3 as Campaign is already created)
       setLaunchStep(4);
 
       // Trigger workflow (best-effort)
       try {
-        await supabase.functions.invoke("trigger-telecaller-campaign", {
-          body: { campaign_id: campaign.id, client_id: clientId },
-        });
-      } catch {
+        const webhookUrl = import.meta.env.VITE_N8N_OUTBOUND_LIST_IMMEDIATE_CALLS_WEBHOOK;
+        if (webhookUrl) {
+          await fetch(webhookUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              campaign_id: campaign.id,
+              client_id: clientId,
+              list_id: campaign.id,
+              campaign_name: data.campaignName,
+              goal: data.goal,
+              schedule_type: data.scheduleType,
+              scheduled_at: schedAt,
+              from_hour: data.fromHour,
+              to_hour: data.toHour,
+              active_days: data.activeDays,
+              max_calls_per_day: data.maxCallsPerDay,
+              retry_enabled: data.retryEnabled,
+              max_retries: data.maxRetries,
+              retry_after: data.retryAfter,
+              retry_unit: data.retryUnit,
+              script: data.script,
+              voice: data.voice,
+              language: data.language,
+              speaking_speed: data.speakingSpeed,
+              lead_qualification: data.leadQualification,
+              qualifying_questions: data.qualifyingQuestions,
+              call_recording: data.callRecording,
+              voicemail_detection: data.voicemailDetection,
+              voicemail_action: data.voicemailAction,
+              voicemail_script: data.voicemailScript,
+            }),
+          });
+        } else {
+          await supabase.functions.invoke("trigger-telecaller-campaign", {
+            body: { campaign_id: campaign.id, client_id: clientId },
+          });
+        }
+      } catch (err) {
+        console.error("Webhook trigger failed", err);
         // Non-fatal: workflow may not be set up yet
       }
 

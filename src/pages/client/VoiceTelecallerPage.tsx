@@ -66,6 +66,7 @@ export default function VoiceTelecallerPage() {
   const [stats, setStats] = useState<CampaignStats | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [recentCalls, setRecentCalls] = useState<CallLog[]>([]);
+  const [outboundLeads, setOutboundLeads] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [tipsVisible, setTipsVisible] = useState(() => {
@@ -78,6 +79,15 @@ export default function VoiceTelecallerPage() {
   const [instantCallName, setInstantCallName] = useState("");
   const [isCalling, setIsCalling] = useState(false);
   const [hasBot, setHasBot] = useState<boolean>(true); // assume true until checked
+
+  const [selectedCallData, setSelectedCallData] = useState<{
+    name?: string;
+    phone?: string;
+    status?: string;
+    time?: string;
+    transcript?: string;
+  } | null>(null);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
 
   // Check access
   const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller" || s.service_slug === "ai-voice-telecaller");
@@ -113,8 +123,8 @@ export default function VoiceTelecallerPage() {
       .on("postgres_changes", {
         event: "*",
         schema: "public",
-        table: "outbound_scheduled_calls",
-        filter: `owner_user_id=eq.${client.user_id}`,
+        table: "voice_campaigns",
+        filter: `client_id=eq.${client.id}`,
       }, () => {
         fetchCampaigns();
       })
@@ -125,19 +135,14 @@ export default function VoiceTelecallerPage() {
   const fetchAllData = useCallback(async () => {
     if (!client || !serviceId) return;
     setIsLoading(true);
-    await Promise.all([fetchBotStatus(), fetchStats(), fetchCampaigns(), fetchRecentCalls()]);
+    await Promise.all([fetchBotStatus(), fetchStats(), fetchCampaigns(), fetchRecentCalls(), fetchOutboundLeads()]);
     setIsLoading(false);
   }, [client, serviceId]);
 
   async function fetchBotStatus() {
     if (!client) return;
-    const { data } = await (supabase as any).from("outboundagents")
-      .select("id")
-      .eq("owner_user_id", client.user_id)
-      .eq("status", "active")
-      .limit(1);
-
-    setHasBot(!!(data && data.length > 0));
+    // Assume bot is active globally logic for this tier, or check workflow instances
+    setHasBot(true);
   }
 
   async function fetchStats() {
@@ -147,21 +152,20 @@ export default function VoiceTelecallerPage() {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
     const [callsRes, leadsRes] = await Promise.all([
-      (supabase as any)
-        .from("outbound_call_logs")
-        .select("call_status")
-        .eq("owner_user_id", client.user_id)
-        .gte("created_at", monthStart),
-      (supabase as any)
-        .from("outbound_call_logs")
+      supabase
+        .from("call_logs")
+        .select("status")
+        .eq("client_id", client.id)
+        .gte("executed_at", monthStart),
+      supabase
+        .from("leads")
         .select("id", { count: "exact", head: true })
-        .eq("owner_user_id", client.user_id)
-        .eq("is_lead", true)
+        .eq("client_id", client.id)
         .gte("created_at", monthStart),
     ]);
 
     const calls = (callsRes.data as any[]) || [];
-    const completed = calls.filter(c => c.call_status === "completed" || c.call_status === "answered").length;
+    const completed = calls.filter(c => c.status === "completed" || c.status === "answered").length;
     const total = calls.length;
 
     setStats({
@@ -174,22 +178,19 @@ export default function VoiceTelecallerPage() {
 
   async function fetchCampaigns() {
     if (!client) return;
-    const { data } = await (supabase as any).from("outbound_scheduled_calls")
-      .select(`
-        id, status, scheduled_at, created_at, list_id,
-        outbound_contact_lists ( name )
-      `)
-      .eq("owner_user_id", client.user_id)
+    const { data } = await supabase.from("voice_campaigns")
+      .select(`id, status, scheduled_at, created_at, campaign_name`)
+      .eq("client_id", client.id)
       .order("created_at", { ascending: false });
 
     if (data) {
       const mapped = data.map((d: any) => ({
         id: d.id,
-        campaign_name: (d.outbound_contact_lists && d.outbound_contact_lists.name) ? d.outbound_contact_lists.name : 'Outbound Campaign',
+        campaign_name: d.campaign_name || 'Outbound Campaign',
         status: d.status || 'draft',
         created_at: d.created_at,
         scheduled_at: d.scheduled_at,
-        list_id: d.list_id
+        list_id: d.id
       }));
       setCampaigns(mapped);
     }
@@ -197,25 +198,51 @@ export default function VoiceTelecallerPage() {
 
   async function fetchRecentCalls() {
     if (!client || !serviceId) return;
-    const { data } = await (supabase as any).from("outbound_call_logs")
-      .select("id, phone, duration, call_status, transcript, created_at, call_url, call_type, name")
-      .eq("owner_user_id", client.user_id)
+    const { data } = await supabase.from("call_logs")
+      .select("id, phone_number, duration_seconds, status, transcript, executed_at, recording_url, call_type, ai_summary")
+      .eq("client_id", client.id)
+      .order("executed_at", { ascending: false })
+      .limit(10);
+
+    if (data) {
+      const mapped = data.map((d: any) => ({
+        id: d.id,
+        phone_number: d.phone_number,
+        duration_seconds: d.duration_seconds || 0,
+        status: d.status || 'unknown',
+        ai_summary: d.ai_summary || d.transcript,
+        executed_at: d.executed_at,
+        recording_url: d.recording_url,
+        call_type: d.call_type,
+        contact_name: d.phone_number // Can be fetched from metadata if populated
+      }));
+      setRecentCalls(mapped);
+    }
+  }
+
+  async function fetchOutboundLeads() {
+    if (!client) return;
+    const { data } = await supabase.from("leads")
+      .select(`
+        id, status, notes, created_at, phone, name,
+        call_logs ( id, transcript )
+      `)
+      .eq("client_id", client.id)
       .order("created_at", { ascending: false })
       .limit(10);
 
     if (data) {
       const mapped = data.map((d: any) => ({
         id: d.id,
-        phone_number: d.phone,
-        duration_seconds: d.duration || 0,
-        status: d.call_status || 'unknown',
-        ai_summary: d.transcript,
-        executed_at: d.created_at,
-        recording_url: d.call_url,
-        call_type: d.call_type,
-        contact_name: d.name
+        status: d.status,
+        notes: d.notes,
+        created_at: d.created_at,
+        phone: d.phone,
+        name: d.name,
+        transcript: d.call_logs?.[0]?.transcript || d.call_logs?.transcript,
+        call_log_id: d.call_logs?.[0]?.id || d.call_logs?.id
       }));
-      setRecentCalls(mapped);
+      setOutboundLeads(mapped);
     }
   }
 
@@ -308,8 +335,8 @@ export default function VoiceTelecallerPage() {
           color={primaryColor}
           label="Leads Captured"
           value={stats?.leadsCount ?? 0}
-          linkText="View Leads"
-          onLinkClick={() => navigate("/client/leads")}
+          // linkText="View Leads"
+          // onLinkClick={() => navigate("/client/leads")}
         />
       </div>
 
@@ -354,6 +381,8 @@ export default function VoiceTelecallerPage() {
             { key: "running", label: "Running" },
             { key: "scheduled", label: "Scheduled" },
             { key: "completed", label: "Completed" },
+            { key: "leads", label: "Leads" },
+            { key: "call_logs", label: "Call Logs" },
           ].map(tab => (
             <Button
               key={tab.key}
@@ -364,7 +393,7 @@ export default function VoiceTelecallerPage() {
               onClick={() => setActiveTab(tab.key)}
             >
               {tab.label}
-              {tab.key !== "all" && (
+              {tab.key !== "all" && tab.key !== "leads" && tab.key !== "call_logs" && (
                 <span className="ml-1.5 text-[10px] opacity-70">
                   ({campaigns.filter(c => tab.key === "all" ? true : c.status === tab.key).length})
                 </span>
@@ -374,7 +403,123 @@ export default function VoiceTelecallerPage() {
         </div>
 
         {/* Campaign Cards */}
-        {filteredCampaigns.length > 0 ? (
+        {activeTab === "leads" ? (
+          <Card>
+            <CardContent className="py-6">
+              {outboundLeads.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Contact Name</TableHead>
+                        <TableHead>Phone Number</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead className="w-10 text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {outboundLeads.map(lead => (
+                        <TableRow key={lead.id}>
+                          <TableCell className="font-medium text-sm">{lead.name || "—"}</TableCell>
+                          <TableCell className="font-mono text-sm">{lead.phone || "—"}</TableCell>
+                          <TableCell className="capitalize text-sm">{lead.status || "new"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setSelectedCallData({
+                                name: lead.name,
+                                phone: lead.phone,
+                                status: lead.status,
+                                time: lead.created_at,
+                                transcript: lead.transcript
+                              });
+                              setDetailsModalOpen(true);
+                            }}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="rounded-full bg-muted p-5 mb-4">
+                    <Users className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-1">
+                    No leads captured yet
+                  </h3>
+                  <p className="text-sm text-muted-foreground max-w-sm">
+                    Leads identified from your calls will appear here.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : activeTab === "call_logs" ? (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-lg">Recent Calls</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentCalls.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Contact Name</TableHead>
+                        <TableHead>Phone Number</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead className="w-10 text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recentCalls.map(call => (
+                        <TableRow key={call.id}>
+                          <TableCell className="font-medium text-sm">{call.contact_name || "—"}</TableCell>
+                          <TableCell className="font-mono text-sm">{call.phone_number}</TableCell>
+                          <TableCell className="text-sm">{formatDuration(call.duration_seconds)}</TableCell>
+                          <TableCell><CallStatusBadge status={call.status} /></TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setSelectedCallData({
+                                name: call.contact_name,
+                                phone: call.phone_number,
+                                status: call.status,
+                                time: call.executed_at,
+                                transcript: call.ai_summary
+                              });
+                              setDetailsModalOpen(true);
+                            }}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-10">
+                  <Phone className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No calls recorded yet</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : filteredCampaigns.length > 0 ? (
           <div className="space-y-3">
             {filteredCampaigns.map(campaign => (
               <CampaignCard
@@ -419,105 +564,116 @@ export default function VoiceTelecallerPage() {
       </div>
 
       {/* Recent Calls */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-lg">Recent Calls</CardTitle>
-          <Button variant="ghost" size="sm" className="text-xs" onClick={() => navigate("/client/voice-telecaller/calls")}>
-            View All <ArrowRight className="h-3 w-3 ml-1" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {recentCalls.length > 0 ? (
-            <>
-              {/* Desktop table */}
-              <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Phone Number</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>AI Summary</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead className="w-10"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentCalls.map(call => (
-                      <TableRow key={call.id}>
-                        <TableCell className="font-mono text-sm">{call.phone_number}</TableCell>
-                        <TableCell className="text-sm">{formatDuration(call.duration_seconds)}</TableCell>
-                        <TableCell><CallStatusBadge status={call.status} /></TableCell>
-                        <TableCell>
-                          <p className="text-xs text-muted-foreground truncate max-w-[200px]" title={call.ai_summary || ""}>
-                            {call.ai_summary || "—"}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {call.recording_url && (
-                                <DropdownMenuItem>
-                                  <Play className="h-3 w-3 mr-2" /> Play Recording
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem>
-                                <FileText className="h-3 w-3 mr-2" /> View Transcript
-                              </DropdownMenuItem>
-                              <DropdownMenuItem>
-                                <Users className="h-3 w-3 mr-2" /> Mark as Lead
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+      {activeTab !== "call_logs" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-lg">Recent Calls</CardTitle>
+            <Button variant="ghost" size="sm" className="text-xs" onClick={() => navigate("/client/voice-telecaller/calls")}>
+              View All <ArrowRight className="h-3 w-3 ml-1" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {recentCalls.length > 0 ? (
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Phone Number</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>AI Summary</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead className="w-10"></TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {recentCalls.map(call => (
+                        <TableRow key={call.id}>
+                          <TableCell className="font-mono text-sm">{call.phone_number}</TableCell>
+                          <TableCell className="text-sm">{formatDuration(call.duration_seconds)}</TableCell>
+                          <TableCell><CallStatusBadge status={call.status} /></TableCell>
+                          <TableCell>
+                            <p className="text-xs text-muted-foreground truncate max-w-[200px]" title={call.ai_summary || ""}>
+                              {call.ai_summary || "—"}
+                            </p>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {call.recording_url && (
+                                  <DropdownMenuItem>
+                                    <Play className="h-3 w-3 mr-2" /> Play Recording
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem onClick={() => {
+                                  setSelectedCallData({
+                                    name: call.contact_name,
+                                    phone: call.phone_number,
+                                    status: call.status,
+                                    time: call.executed_at,
+                                    transcript: call.ai_summary
+                                  });
+                                  setDetailsModalOpen(true);
+                                }}>
+                                  <FileText className="h-3 w-3 mr-2" /> View Transcript
+                                </DropdownMenuItem>
+                                <DropdownMenuItem>
+                                  <Users className="h-3 w-3 mr-2" /> Mark as Lead
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
 
-              {/* Mobile cards */}
-              <div className="space-y-3 md:hidden">
-                {recentCalls.map(call => (
-                  <div key={call.id} className="rounded-lg border p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-sm">{call.phone_number}</span>
-                      <CallStatusBadge status={call.status} />
+                {/* Mobile cards */}
+                <div className="space-y-3 md:hidden">
+                  {recentCalls.map(call => (
+                    <div key={call.id} className="rounded-lg border p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-sm">{call.phone_number}</span>
+                        <CallStatusBadge status={call.status} />
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{formatDuration(call.duration_seconds)}</span>
+                        <span>{formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}</span>
+                      </div>
+                      {call.ai_summary && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">{call.ai_summary}</p>
+                      )}
                     </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{formatDuration(call.duration_seconds)}</span>
-                      <span>{formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}</span>
-                    </div>
-                    {call.ai_summary && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">{call.ai_summary}</p>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-10">
+                <Phone className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No calls recorded yet</p>
               </div>
-            </>
-          ) : (
-            <div className="text-center py-10">
-              <Phone className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No calls recorded yet</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
       <CreateCampaignWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}
         primaryColor={primaryColor}
         usageLimit={telecallerService.usage_limit}
         usageConsumed={telecallerService.usage_consumed}
-        clientId={client?.user_id || ""}
+        clientId={client?.id || ""}
       />
 
       <Dialog open={instantCallOpen} onOpenChange={setInstantCallOpen}>
@@ -541,6 +697,46 @@ export default function VoiceTelecallerPage() {
             <Button onClick={handleInstantCall} disabled={isCalling} style={{ backgroundColor: primaryColor, color: "white" }}>
               {isCalling ? "Calling..." : "Call Now"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={detailsModalOpen} onOpenChange={setDetailsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-11/12 rounded-lg">
+          <DialogHeader>
+            <DialogTitle>Details</DialogTitle>
+          </DialogHeader>
+          {selectedCallData && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-semibold text-muted-foreground block mb-1">Contact Name</span>
+                  <span>{selectedCallData.name || "—"}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground block mb-1">Phone Number</span>
+                  <span className="font-mono">{selectedCallData.phone || "—"}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground block mb-1">Status</span>
+                  <span className="capitalize">{selectedCallData.status || "—"}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground block mb-1">Time</span>
+                  <span>{selectedCallData.time ? formatDistanceToNow(new Date(selectedCallData.time), { addSuffix: true }) : "—"}</span>
+                </div>
+              </div>
+              
+              <div className="border-t pt-4 mt-4">
+                <span className="font-semibold text-muted-foreground block mb-2">Transcript / AI Summary</span>
+                <div className="bg-muted p-4 rounded-md text-sm whitespace-pre-wrap">
+                  {selectedCallData.transcript || "No transcript or summary available."}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setDetailsModalOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -596,8 +792,8 @@ function CampaignCard({
   async function updateStatus(newStatus: string) {
     setIsUpdating(true);
     try {
-      const { error } = await (supabase as any).from("outbound_scheduled_calls")
-        .update({ status: newStatus })
+      const { error } = await supabase.from("voice_campaigns")
+        .update({ status: newStatus as any })
         .eq("id", campaign.id);
       if (error) throw error;
       toast.success(`Campaign marked as ${newStatus}`);
@@ -612,10 +808,7 @@ function CampaignCard({
     if (!confirm("Are you sure you want to delete this campaign? this will wipe all calls queues.")) return;
     setIsUpdating(true);
     try {
-      const { error } = await (supabase as any).from("outbound_scheduled_calls").delete().eq("id", campaign.id);
-      if (campaign.list_id) {
-        await (supabase as any).from("outbound_contact_lists").delete().eq("id", campaign.list_id);
-      }
+      const { error } = await supabase.from("voice_campaigns").delete().eq("id", campaign.id);
       if (error) throw error;
       toast.success("Campaign deleted successfully");
     } catch (err: any) {
