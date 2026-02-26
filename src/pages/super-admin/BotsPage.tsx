@@ -272,6 +272,22 @@ export default function BotsPage() {
     if (!assignTarget || !selectedUserId) return;
     setAssigning(true);
 
+    // Check if user already has a bot
+    const { data: existingBots } = await supabase
+      .from("outboundagents" as any)
+      .select("id")
+      .eq("owner_user_id", selectedUserId);
+
+    if (existingBots && existingBots.length > 0) {
+      toast({
+        title: "Assignment failed",
+        description: "This user already has an assigned bot.",
+        variant: "destructive"
+      });
+      setAssigning(false);
+      return;
+    }
+
     const { error } = await supabase
       .from("outboundagents" as any)
       .update({ owner_user_id: selectedUserId })
@@ -299,6 +315,23 @@ export default function BotsPage() {
     }
 
     setCreating(true);
+
+    // Check if the user already has a bot
+    const { data: existingBots } = await supabase
+      .from("outboundagents" as any)
+      .select("id")
+      .eq("owner_user_id", formData.owner_user_id);
+
+    if (existingBots && existingBots.length > 0) {
+      toast({
+        title: "Creation failed",
+        description: "This user already has a bot assigned to them.",
+        variant: "destructive"
+      });
+      setCreating(false);
+      return;
+    }
+
     // If company_name is required in DB but not in form, use bot name as fallback
     const payload = {
       ...formData,

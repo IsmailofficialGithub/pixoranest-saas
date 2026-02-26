@@ -14,7 +14,7 @@ export const initiateInstantCall = async (phoneNumber: string, customerName: str
     // Fetch the bot for this user to get provider IDs
     const { data, error: botError } = await (supabase as any)
         .from("outboundagents")
-        .select("provider_agent_id, provider_from_number_id")
+        .select("id, provider_agent_id, provider_from_number_id")
         .eq("owner_user_id", ownerUserId)
         .maybeSingle();
 
@@ -22,10 +22,11 @@ export const initiateInstantCall = async (phoneNumber: string, customerName: str
     const bot = data as any;
     if (!bot) throw new Error("No outbound agent assigned to your account.");
 
-    const agentId = bot.provider_agent_id;
+    const dbAgentId = bot.id;
+    const providerAgentId = bot.provider_agent_id;
     const fromNumberId = bot.provider_from_number_id;
 
-    if (!agentId || !fromNumberId) {
+    if (!providerAgentId || !fromNumberId) {
         throw new Error("Outbound agent is missing Provider Agent ID or From Number ID.");
     }
 
@@ -36,9 +37,11 @@ export const initiateInstantCall = async (phoneNumber: string, customerName: str
             "Accept": "application/json"
         },
         body: JSON.stringify({
-            agent_id: agentId,
+            agent_id: dbAgentId,
+            provider_agent_id: providerAgentId,
             to_number: phoneNumber,
             from_number_id: fromNumberId,
+            user_id: ownerUserId,
             call_context: {
                 customer_name: customerName || "Customer",
             }
