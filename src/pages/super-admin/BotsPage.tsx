@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
-  Bot, Search, MoreHorizontal, UserPlus, Eye, Pencil, Trash2, CheckCircle2, XCircle, Plus, Loader2, Zap, RefreshCw
+  Bot, Search, MoreHorizontal, UserPlus, Eye, Pencil, Trash2, CheckCircle2, XCircle, Plus, Loader2, Zap, RefreshCw, Power, PowerOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,28 +30,15 @@ interface BotRecord {
   id: string;
   owner_user_id: string;
   name: string;
-  company_name: string;
-  website_url: string | null;
-  goal: string | null;
-  background: string | null;
-  welcome_message: string | null;
-  instruction_voice: string | null;
-  script: string | null;
-  voice: string;
-  language: string | null;
-  agent_type: string | null;
-  tone: string | null;
-  model: string;
-  background_noise: string | null;
-  max_timeout: string | null;
+  company_name: string | null;
   created_at: string;
   updated_at: string;
-  vapi_id: string | null;
   account_in_use: boolean | null;
+  status: string | null;
   owner_email?: string;
   owner_name?: string;
-  provider_agent_id?: string;
-  provider_from_number_id?: string;
+  provider_agent_id?: string | null;
+  provider_from_number_id?: string | null;
 }
 
 interface UserOption {
@@ -221,9 +208,9 @@ export default function BotsPage() {
       list = list.filter(
         (b) =>
           b.name.toLowerCase().includes(q) ||
-          b.company_name.toLowerCase().includes(q) ||
+          (b.company_name || "").toLowerCase().includes(q) ||
           (b.owner_email ?? "").toLowerCase().includes(q) ||
-          (b.vapi_id ?? "").toLowerCase().includes(q)
+          (b.provider_agent_id ?? "").toLowerCase().includes(q)
       );
     }
     return list;
@@ -351,6 +338,36 @@ export default function BotsPage() {
     toast({ title: "Form Auto-filled", description: "Default values have been applied." });
   };
 
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    const { error } = await supabase
+      .from("outboundagents" as any)
+      .update({ status: newStatus })
+      .eq("id", id);
+    
+    if (error) {
+      toast({ title: "Error updating status", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: `Bot ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully` });
+      fetchBots();
+    }
+  };
+
+  const handleDeleteBot = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this bot?")) return;
+    
+    const { error } = await supabase
+      .from("outboundagents" as any)
+      .delete()
+      .eq("id", id);
+      
+    if (error) {
+      toast({ title: "Error deleting bot", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Bot deleted successfully" });
+      fetchBots();
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -406,7 +423,6 @@ export default function BotsPage() {
                   <TableHead>Bot Name</TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead>Owner</TableHead>
-                  <TableHead>Specs</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -423,17 +439,13 @@ export default function BotsPage() {
                         <span className="text-xs text-muted-foreground">{bot.owner_email}</span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        <Badge variant="outline" className="text-[10px] py-0">{bot.model}</Badge>
-                        <Badge variant="outline" className="text-[10px] py-0">{bot.voice}</Badge>
-                      </div>
-                    </TableCell>
                     <TableCell className="text-center">
-                      {bot.account_in_use ? (
+                      {bot.status?.toLowerCase() === 'active' ? (
                         <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Active</Badge>
                       ) : (
-                        <Badge variant="secondary">Inactive</Badge>
+                        <Badge variant="secondary">
+                          {bot.status ? bot.status.charAt(0).toUpperCase() + bot.status.slice(1).toLowerCase() : 'Inactive'}
+                        </Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
@@ -456,6 +468,18 @@ export default function BotsPage() {
                             setUserSearchTerm(bot.owner_email || "");
                           }}>
                             <UserPlus className="mr-2 h-4 w-4" /> Reassign
+                          </DropdownMenuItem>
+                          {bot.status?.toLowerCase() === 'active' ? (
+                            <DropdownMenuItem onClick={() => handleUpdateStatus(bot.id, 'inactive')}>
+                              <PowerOff className="mr-2 h-4 w-4" /> Deactivate
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => handleUpdateStatus(bot.id, 'active')}>
+                              <Power className="mr-2 h-4 w-4" /> Activate
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => handleDeleteBot(bot.id)} className="text-destructive focus:text-destructive">
+                            <Trash2 className="mr-2 h-4 w-4" /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -575,28 +599,13 @@ export default function BotsPage() {
             <DialogTitle>Bot Details: {viewTarget?.name}</DialogTitle>
           </DialogHeader>
           {viewTarget && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
+            <div className="py-4">
               <div className="space-y-4">
                 <div>
-                  <Label className="text-xs text-muted-foreground">General</Label>
-                  <p className="text-sm"><strong>Company:</strong> {viewTarget.company_name}</p>
-                  <p className="text-sm"><strong>Website:</strong> {viewTarget.website_url || "—"}</p>
-                  <p className="text-sm"><strong>Type:</strong> {viewTarget.agent_type}</p>
+                  <Label className="text-xs text-muted-foreground">Provider Info</Label>
+                  <p className="text-sm break-all"><strong>Agent ID:</strong> {viewTarget.provider_agent_id || "—"}</p>
+                  <p className="text-sm break-all"><strong>From Number ID:</strong> {viewTarget.provider_from_number_id || "—"}</p>
                 </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Specs</Label>
-                  <p className="text-sm"><strong>Model:</strong> {viewTarget.model}</p>
-                  <p className="text-sm"><strong>Voice:</strong> {viewTarget.voice}</p>
-                  <p className="text-sm"><strong>Language:</strong> {viewTarget.language}</p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Vapi</Label>
-                  <p className="text-xs font-mono">{viewTarget.vapi_id || "None"}</p>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div><Label className="text-xs text-muted-foreground">Goal</Label><p className="text-sm">{viewTarget.goal}</p></div>
-                <div><Label className="text-xs text-muted-foreground">Welcome</Label><p className="text-sm">{viewTarget.welcome_message}</p></div>
               </div>
             </div>
           )}

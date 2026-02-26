@@ -134,9 +134,10 @@ export default function VoiceTelecallerPage() {
     const { data } = await (supabase as any).from("outboundagents")
       .select("id")
       .eq("owner_user_id", client.user_id)
-      .maybeSingle();
+      .eq("status", "active")
+      .limit(1);
 
-    setHasBot(!!data);
+    setHasBot(!!(data && data.length > 0));
   }
 
   async function fetchStats() {
@@ -269,7 +270,7 @@ export default function VoiceTelecallerPage() {
           </Badge>
           {!hasBot ? (
             <Badge variant="destructive" className="text-xs py-1 px-3">
-              No Bot Assigned
+              No Active Bot
             </Badge>
           ) : (
             <>
@@ -397,7 +398,7 @@ export default function VoiceTelecallerPage() {
               <p className="text-sm text-muted-foreground max-w-sm mb-6">
                 {hasBot
                   ? "Create your first campaign to start reaching out to customers with AI-powered calls."
-                  : "You need a connected bot to run campaigns. Please contact your admin."}
+                  : "You need an active bot to run campaigns. Please contact your admin."}
               </p>
               {hasBot && (
                 <Button style={{ backgroundColor: primaryColor, color: "white" }} size="lg" onClick={() => setWizardOpen(true)}>
