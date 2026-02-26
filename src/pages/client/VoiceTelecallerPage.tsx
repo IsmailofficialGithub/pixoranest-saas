@@ -674,6 +674,7 @@ export default function VoiceTelecallerPage() {
         usageLimit={telecallerService.usage_limit}
         usageConsumed={telecallerService.usage_consumed}
         clientId={client?.id || ""}
+        userId={client?.user_id || ""}
       />
 
       <Dialog open={instantCallOpen} onOpenChange={setInstantCallOpen}>

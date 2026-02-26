@@ -153,10 +153,11 @@ interface Props {
   usageLimit: number;
   usageConsumed: number;
   clientId: string;
+  userId: string;
 }
 
 export default function CreateCampaignWizard({
-  open, onOpenChange, primaryColor, usageLimit, usageConsumed, clientId,
+  open, onOpenChange, primaryColor, usageLimit, usageConsumed, clientId, userId,
 }: Props) {
   const [step, setStep] = useState(1);
   const [data, setData] = useState<WizardData>(() => {
@@ -302,6 +303,15 @@ export default function CreateCampaignWizard({
 
   async function handleSaveAsDraft() {
     try {
+      // Step 1: Create Contact List
+      const { data: list, error: listErr } = await (supabase as any).from("outbound_contact_lists").insert({
+        owner_user_id: userId,
+        name: data.campaignName,
+        description: data.script || null,
+      }).select("id").single();
+      
+      if (listErr || !list) throw listErr || new Error("Failed to create list");
+
       const schedAt = data.scheduleType === "later" && data.scheduledAt
         ? new Date(data.scheduledAt).toISOString()
         : new Date().toISOString();
@@ -332,7 +342,38 @@ export default function CreateCampaignWizard({
     setLaunchStep(1);
 
     try {
-      // Step 1: Create Campaign
+      // Step 1: Create Contact List
+      const { data: list, error: listError } = await (supabase as any)
+        .from("outbound_contact_lists")
+        .insert({
+          owner_user_id: userId,
+          name: data.campaignName,
+          description: data.script || null,
+        })
+        .select("id")
+        .single();
+
+      if (listError || !list) throw listError || new Error("Failed to create contact list");
+      setLaunchStep(2);
+
+      // Step 2: Insert contacts to custom contacts table
+      const BATCH = 500;
+      for (let i = 0; i < validContacts.length; i += BATCH) {
+        const batch = validContacts.slice(i, i + BATCH).map(c => ({
+          list_id: list.id,
+          phone_number: c.phone,
+          name: c.name || "Unknown",
+          email: c.email || null,
+          extra_data: { company: c.company },
+        }));
+        const { error: contactErr } = await (supabase as any)
+          .from("outbound_contacts")
+          .insert(batch);
+        if (contactErr) throw contactErr;
+      }
+      setLaunchStep(3);
+
+      // Step 3: Create Campaign
       const schedAt = data.scheduleType === "later" && data.scheduledAt
         ? new Date(data.scheduledAt).toISOString()
         : new Date().toISOString();
@@ -351,25 +392,6 @@ export default function CreateCampaignWizard({
         .single();
 
       if (campError || !campaign) throw campError || new Error("Failed to create campaign");
-      setLaunchStep(2);
-
-      // Step 2: Insert contacts in batches
-      const BATCH = 500;
-      for (let i = 0; i < validContacts.length; i += BATCH) {
-        const batch = validContacts.slice(i, i + BATCH).map(c => ({
-          campaign_id: campaign.id,
-          phone_number: c.phone,
-          contact_name: c.name || "Unknown",
-          contact_data: { email: c.email, company: c.company },
-        }));
-        const { error: contactErr } = await supabase
-          .from("campaign_contacts")
-          .insert(batch);
-        if (contactErr) throw contactErr;
-      }
-      setLaunchStep(3);
-
-      // (Skip Step 3 as Campaign is already created)
       setLaunchStep(4);
 
       // Trigger workflow (best-effort)
@@ -384,7 +406,7 @@ export default function CreateCampaignWizard({
             body: JSON.stringify({
               campaign_id: campaign.id,
               client_id: clientId,
-              list_id: campaign.id,
+              list_id: list.id,
               campaign_name: data.campaignName,
               goal: data.goal,
               schedule_type: data.scheduleType,
