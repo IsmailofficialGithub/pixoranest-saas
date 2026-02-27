@@ -302,38 +302,8 @@ export default function CreateCampaignWizard({
   }
 
   async function handleSaveAsDraft() {
-    try {
-      // Step 1: Create Contact List
-      const { data: list, error: listErr } = await (supabase as any).from("outbound_contact_lists").insert({
-        owner_user_id: userId,
-        name: data.campaignName,
-        description: data.script || null,
-      }).select("id").single();
-      
-      if (listErr || !list) throw listErr || new Error("Failed to create list");
-
-      const schedAt = data.scheduleType === "later" && data.scheduledAt
-        ? new Date(data.scheduledAt).toISOString()
-        : new Date().toISOString();
-
-      const { error } = await supabase.from("voice_campaigns").insert({
-        client_id: clientId,
-        campaign_name: data.campaignName,
-        script: data.script || null,
-        campaign_type: "telecaller",
-        status: "draft",
-        scheduled_at: schedAt,
-      });
-
-      if (error) throw error;
-      toast.success("Campaign saved as draft");
-      localStorage.removeItem(STORAGE_KEY);
-      setData(defaultData);
-      setStep(1);
-      onOpenChange(false);
-    } catch (err: any) {
-      toast.error("Failed to save draft: " + (err.message || "Unknown error"));
-    }
+    toast.success("Campaign saved as draft locally");
+    onOpenChange(false);
   }
 
   async function handleLaunch() {
@@ -371,33 +341,12 @@ export default function CreateCampaignWizard({
           .insert(batch);
         if (contactErr) throw contactErr;
       }
-      setLaunchStep(3);
+      setLaunchStep(4);
 
-      // Step 3: Create Campaign
       const schedAt = data.scheduleType === "later" && data.scheduledAt
         ? new Date(data.scheduledAt).toISOString()
         : new Date().toISOString();
 
-      const { data: campaign, error: campError } = await supabase
-        .from("voice_campaigns")
-        .insert({
-          client_id: clientId,
-          campaign_name: data.campaignName,
-          script: data.script || null,
-          campaign_type: "telecaller",
-          status: data.scheduleType === "later" ? "scheduled" : "running",
-          scheduled_at: schedAt,
-        })
-        .select("id")
-        .single();
-
-      if (campError || !campaign) throw campError || new Error("Failed to create campaign");
-      setLaunchStep(4);
-
-      const {data:agent_id,error:agentError}=await supabase.from("outboundagents").select("id").eq("owner_user_id",userId).eq("status",'active').single();
-      if(agentError||!agent_id) throw agentError||new Error("Failed to get agent id");
-
-      
       // Trigger workflow (best-effort)
       try {
         const webhookUrl = import.meta.env.VITE_N8N_OUTBOUND_LIST_IMMEDIATE_CALLS_WEBHOOK;
@@ -408,8 +357,8 @@ export default function CreateCampaignWizard({
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              campaign_id: campaign.id,
-              agent_id: agent_id.id,
+              campaign_id: list.id,
+              agent_id: userId,
               client_id: clientId,
               list_id: list.id,
               campaign_name: data.campaignName,
@@ -438,7 +387,7 @@ export default function CreateCampaignWizard({
           });
         } else {
           await supabase.functions.invoke("trigger-telecaller-campaign", {
-            body: { campaign_id: campaign.id, client_id: clientId },
+            body: { campaign_id: list.id, client_id: clientId },
           });
         }
       } catch (err) {

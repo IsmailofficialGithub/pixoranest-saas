@@ -92,7 +92,7 @@ export default function ClientAnalyticsPage() {
         .gte("created_at", sd).lte("created_at", ed).order("created_at"),
       supabase.from("social_media_posts").select("*").eq("client_id", client.id)
         .gte("created_at", sd).lte("created_at", ed),
-      supabase.from("voice_campaigns").select("*").eq("client_id", client.id)
+      supabase.from("outbound_contact_lists").select("*").eq("owner_user_id", client.user_id)
         .gte("created_at", sd).lte("created_at", ed).order("created_at"),
     ]);
 
@@ -667,20 +667,19 @@ export default function ClientAnalyticsPage() {
                     </TableHeader>
                     <TableBody>
                       {campaigns.map(c => {
-                        const answerRate = c.contacts_called > 0 ? ((c.contacts_answered || 0) / c.contacts_called * 100).toFixed(1) : "0.0";
                         return (
                           <TableRow key={c.id}>
-                            <TableCell className="font-medium">{c.campaign_name}</TableCell>
+                            <TableCell className="font-medium">{c.name}</TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="capitalize text-xs">{c.campaign_type || "telecaller"}</Badge>
+                              <Badge variant="outline" className="capitalize text-xs">telecaller</Badge>
                             </TableCell>
-                            <TableCell className="text-right">{c.total_contacts || 0}</TableCell>
-                            <TableCell className="text-right">{c.contacts_called || 0}</TableCell>
-                            <TableCell className="text-right">{c.contacts_answered || 0}</TableCell>
-                            <TableCell className="text-right">{answerRate}%</TableCell>
+                            <TableCell className="text-right">-</TableCell>
+                            <TableCell className="text-right">-</TableCell>
+                            <TableCell className="text-right">-</TableCell>
+                            <TableCell className="text-right">-</TableCell>
                             <TableCell>
-                              <Badge variant={c.status === "completed" ? "default" : c.status === "running" ? "secondary" : "outline"} className="capitalize text-xs">
-                                {c.status}
+                              <Badge variant="secondary" className="capitalize text-xs">
+                                Active
                               </Badge>
                             </TableCell>
                           </TableRow>

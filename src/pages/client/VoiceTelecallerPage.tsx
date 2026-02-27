@@ -123,8 +123,8 @@ export default function VoiceTelecallerPage() {
       .on("postgres_changes", {
         event: "*",
         schema: "public",
-        table: "voice_campaigns",
-        filter: `client_id=eq.${client.id}`,
+        table: "outbound_contact_lists",
+        filter: `owner_user_id=eq.${client.user_id}`,
       }, () => {
         fetchCampaigns();
       })
@@ -153,12 +153,12 @@ export default function VoiceTelecallerPage() {
 
     const [callsRes, leadsRes] = await Promise.all([
       supabase
-        .from("outbound_call_logs" as any)
+        .from("outbound_call_logs")
         .select("call_status")
         .eq("owner_user_id", client.user_id)
         .gte("created_at", monthStart),
       supabase
-        .from("outbound_leads" as any)
+        .from("outbound_leads")
         .select("id", { count: "exact", head: true })
         .eq("owner_user_id", client.user_id)
         .gte("created_at", monthStart),
@@ -178,18 +178,18 @@ export default function VoiceTelecallerPage() {
 
   async function fetchCampaigns() {
     if (!client) return;
-    const { data } = await supabase.from("voice_campaigns")
-      .select(`id, status, scheduled_at, created_at, campaign_name`)
-      .eq("client_id", client.id)
+    const { data } = await supabase.from("outbound_contact_lists")
+      .select(`id, name, description, created_at`)
+      .eq("owner_user_id", client.user_id)
       .order("created_at", { ascending: false });
 
     if (data) {
       const mapped = data.map((d: any) => ({
         id: d.id,
-        campaign_name: d.campaign_name || 'Outbound Campaign',
-        status: d.status || 'draft',
+        campaign_name: d.name || 'Outbound Campaign',
+        status: 'running', // Fallback as we don't track status directly in lists
         created_at: d.created_at,
-        scheduled_at: d.scheduled_at,
+        scheduled_at: null,
         list_id: d.id
       }));
       setCampaigns(mapped);
@@ -197,9 +197,9 @@ export default function VoiceTelecallerPage() {
   }
 
   async function fetchRecentCalls() {
-    if (!client || !serviceId) return;
-    const { data } = await supabase.from("outbound_call_logs" as any)
-      .select("id, phone, duration, call_status, transcript, created_at, call_url, call_type, name")
+    if (!client) return;
+    const { data } = await supabase.from("outbound_call_logs")
+      .select("id, phone, name, duration, transcript, call_url, call_type, call_status, created_at")
       .eq("owner_user_id", client.user_id)
       .order("created_at", { ascending: false })
       .limit(10);
@@ -208,7 +208,7 @@ export default function VoiceTelecallerPage() {
       const mapped = data.map((d: any) => ({
         id: d.id,
         phone_number: d.phone,
-        duration_seconds: d.duration || 0,
+        duration_seconds: parseInt(d.duration) || 0,
         status: d.call_status || 'unknown',
         ai_summary: d.transcript,
         executed_at: d.created_at,
@@ -222,26 +222,29 @@ export default function VoiceTelecallerPage() {
 
   async function fetchOutboundLeads() {
     if (!client) return;
-    const { data } = await supabase.from("outbound_leads" as any)
+    const { data } = await supabase.from("outbound_leads")
       .select(`
-        id, status, notes, created_at, phone, name,
-        outbound_call_logs ( id, transcript )
+        id, status, notes, created_at,
+        outbound_call_logs ( id, transcript, phone, name )
       `)
       .eq("owner_user_id", client.user_id)
       .order("created_at", { ascending: false })
       .limit(10);
 
     if (data) {
-      const mapped = data.map((d: any) => ({
-        id: d.id,
-        status: d.status,
-        notes: d.notes,
-        created_at: d.created_at,
-        phone: d.phone,
-        name: d.name,
-        transcript: d.outbound_call_logs?.[0]?.transcript || d.outbound_call_logs?.transcript,
-        call_log_id: d.outbound_call_logs?.[0]?.id || d.outbound_call_logs?.id
-      }));
+      const mapped = data.map((d: any) => {
+        const callLog = Array.isArray(d.outbound_call_logs) ? d.outbound_call_logs[0] : d.outbound_call_logs;
+        return {
+          id: d.id,
+          status: d.status,
+          notes: d.notes,
+          created_at: d.created_at,
+          phone: callLog?.phone,
+          name: callLog?.name,
+          transcript: callLog?.transcript,
+          call_log_id: callLog?.id
+        };
+      });
       setOutboundLeads(mapped);
     }
   }
@@ -791,25 +794,14 @@ function CampaignCard({
   const [isUpdating, setIsUpdating] = useState(false);
 
   async function updateStatus(newStatus: string) {
-    setIsUpdating(true);
-    try {
-      const { error } = await supabase.from("voice_campaigns")
-        .update({ status: newStatus as any })
-        .eq("id", campaign.id);
-      if (error) throw error;
-      toast.success(`Campaign marked as ${newStatus}`);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setIsUpdating(false);
-    }
+    toast.info("Status updates are not supported for this campaign type.");
   }
 
   async function deleteCampaign() {
     if (!confirm("Are you sure you want to delete this campaign? this will wipe all calls queues.")) return;
     setIsUpdating(true);
     try {
-      const { error } = await supabase.from("voice_campaigns").delete().eq("id", campaign.id);
+      const { error } = await supabase.from("outbound_contact_lists").delete().eq("id", campaign.id);
       if (error) throw error;
       toast.success("Campaign deleted successfully");
     } catch (err: any) {
@@ -851,24 +843,9 @@ function CampaignCard({
               <DropdownMenuItem onClick={() => navigate("/client/leads")}>
                 <Users className="h-3 w-3 mr-2" /> View Leads
               </DropdownMenuItem>
-              {campaign.status === "running" && (
-                <DropdownMenuItem onClick={() => updateStatus('paused')}>
-                  <Pause className="h-3 w-3 mr-2" /> Pause
-                </DropdownMenuItem>
-              )}
-              {campaign.status === "paused" && (
-                <DropdownMenuItem onClick={() => updateStatus('running')}>
-                  <Play className="h-3 w-3 mr-2" /> Resume
-                </DropdownMenuItem>
-              )}
-              {/* <DropdownMenuItem onClick={() => toast.info("Clone functionality coming soon!")}>
-                <Copy className="h-3 w-3 mr-2" /> Clone Campaign
-              </DropdownMenuItem> */}
-              {(campaign.status === "draft" || campaign.status === "completed" || campaign.status === "pending") && (
-                <DropdownMenuItem onClick={deleteCampaign} className="text-destructive focus:text-destructive">
-                  <Trash2 className="h-3 w-3 mr-2" /> Delete
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem onClick={deleteCampaign} className="text-destructive focus:text-destructive">
+                <Trash2 className="h-3 w-3 mr-2" /> Delete
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

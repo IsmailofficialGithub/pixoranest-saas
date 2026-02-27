@@ -55,15 +55,15 @@ export default function ClientDashboardHome() {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    const [leadsRes, campaignsRes, callsRes, waCampaignsRes, waMessagesRes] = await Promise.all([
+    const [leadsRes, campaignsRes, callsRes, listsRes, waMessagesRes] = await Promise.all([
       supabase.from("leads").select("id", { count: "exact", head: true })
         .eq("client_id", client.id).gte("created_at", monthStart),
-      supabase.from("voice_campaigns").select("id", { count: "exact", head: true })
-        .eq("client_id", client.id).in("status", ["running", "scheduled"]),
+      supabase.from("outbound_contact_lists").select("id", { count: "exact", head: true })
+        .eq("owner_user_id", client.user_id),
       supabase.from("call_logs").select("id, executed_at, status, phone_number, call_type, service_id")
         .eq("client_id", client.id).order("executed_at", { ascending: false }).limit(5),
-      supabase.from("voice_campaigns").select("id, started_at, status, campaign_name")
-        .eq("client_id", client.id).order("created_at", { ascending: false }).limit(5),
+      supabase.from("outbound_contact_lists").select("id, created_at, name")
+        .eq("owner_user_id", client.user_id).order("created_at", { ascending: false }).limit(5),
       supabase.from("whatsapp_messages").select("id, sent_at, status, phone_number")
         .eq("client_id", client.id).order("sent_at", { ascending: false }).limit(5),
     ]);
@@ -88,13 +88,13 @@ export default function ClientDashboardHome() {
         timestamp: c.executed_at || new Date().toISOString(),
       });
     });
-    waCampaignsRes.data?.forEach(c => {
+    listsRes.data?.forEach(c => {
       items.push({
         id: c.id,
         type: "campaign",
-        description: `Campaign "${c.campaign_name}" ${c.status}`,
-        status: c.status || "draft",
-        timestamp: c.started_at || new Date().toISOString(),
+        description: `Campaign "${c.name}" created`,
+        status: "active",
+        timestamp: c.created_at || new Date().toISOString(),
       });
     });
     waMessagesRes.data?.forEach(m => {
