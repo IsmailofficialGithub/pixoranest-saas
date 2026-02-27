@@ -93,27 +93,9 @@ export default function VoiceTelecallerPage() {
   const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller" || s.service_slug === "ai-voice-telecaller");
 
   useEffect(() => {
-    if (!client || contextLoading) return;
-    if (!telecallerService) return;
-
-    // Get the actual service ID
-    const fetchServiceId = async () => {
-      const { data } = await supabase
-        .from("services")
-        .select("id")
-        .eq("slug", "ai-voice-telecaller")
-        .maybeSingle();
-      if (data) {
-        setServiceId(data.id);
-      }
-    };
-    fetchServiceId();
-  }, [client, contextLoading, telecallerService]);
-
-  useEffect(() => {
-    if (!client || !serviceId) return;
+    if (!client) return;
     fetchAllData();
-  }, [client, serviceId]);
+  }, [client]);
 
   // Realtime subscription for campaigns
   useEffect(() => {
@@ -133,11 +115,11 @@ export default function VoiceTelecallerPage() {
   }, [client]);
 
   const fetchAllData = useCallback(async () => {
-    if (!client || !serviceId) return;
+    if (!client) return;
     setIsLoading(true);
     await Promise.all([fetchBotStatus(), fetchStats(), fetchCampaigns(), fetchRecentCalls(), fetchOutboundLeads()]);
     setIsLoading(false);
-  }, [client, serviceId]);
+  }, [client]);
 
   async function fetchBotStatus() {
     if (!client) return;
@@ -146,7 +128,7 @@ export default function VoiceTelecallerPage() {
   }
 
   async function fetchStats() {
-    if (!client || !serviceId) return;
+    if (!client) return;
 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
