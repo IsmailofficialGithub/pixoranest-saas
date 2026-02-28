@@ -238,7 +238,6 @@ export default function AdminSettingsPage() {
           <TabsTrigger value="security" className="gap-1.5"><Shield className="h-4 w-4" /> Security</TabsTrigger>
           <TabsTrigger value="notifications" className="gap-1.5"><Bell className="h-4 w-4" /> Notifications</TabsTrigger>
           <TabsTrigger value="billing" className="gap-1.5"><CreditCard className="h-4 w-4" /> Billing</TabsTrigger>
-          <TabsTrigger value="integrations" className="gap-1.5"><Plug className="h-4 w-4" /> Integrations</TabsTrigger>
           <TabsTrigger value="advanced" className="gap-1.5"><Settings className="h-4 w-4" /> Advanced</TabsTrigger>
         </TabsList>
 
@@ -518,72 +517,6 @@ export default function AdminSettingsPage() {
               <Save className="h-4 w-4 mr-2" /> {billingSaving ? "Saving..." : "Save Billing Details"}
             </Button>
           </div>
-        </TabsContent>
-
-        {/* TAB 5: API & Integrations */}
-        <TabsContent value="integrations" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2"><Key className="h-5 w-5" /> API Access</CardTitle>
-              <CardDescription>Use API keys for custom integrations</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Your API Key</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={showApiKey ? apiKeyPlaceholder : "••••••••••••••••••••••••••••"}
-                    disabled
-                    className="font-mono text-sm"
-                  />
-                  <Button variant="outline" size="sm" onClick={() => setShowApiKey(!showApiKey)}>
-                    {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(apiKeyPlaceholder); toast({ title: "Copied to clipboard" }); }}>
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm">Regenerate Key</Button>
-                <Button variant="outline" size="sm"><ExternalLink className="h-4 w-4 mr-1" /> API Docs</Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Integrations</CardTitle>
-              <CardDescription>Connect your favorite tools</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {[
-                { name: "Salesforce", category: "CRM", connected: false },
-                { name: "HubSpot", category: "CRM", connected: false },
-                { name: "QuickBooks", category: "Accounting", connected: false },
-                { name: "Slack", category: "Communication", connected: false },
-                { name: "Mailchimp", category: "Email Marketing", connected: false },
-              ].map((integration) => (
-                <div key={integration.name} className="flex items-center justify-between p-4 rounded-lg border border-border">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
-                      <Plug className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{integration.name}</p>
-                      <p className="text-xs text-muted-foreground">{integration.category}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">{integration.connected ? "Connected" : "Not Connected"}</Badge>
-                    <Button variant="outline" size="sm">
-                      {integration.connected ? "Configure" : "Connect"}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* TAB 6: Advanced */}
