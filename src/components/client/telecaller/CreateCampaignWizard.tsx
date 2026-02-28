@@ -191,8 +191,7 @@ export default function CreateCampaignWizard({
   const step1Valid = data.campaignName.trim().length >= 3 &&
     (data.scheduleType === "immediate" || data.scheduledAt);
   const step2Valid = validContacts.length > 0 && !exceedsLimit;
-  const step3Valid = data.script.trim().length >= 50 && data.script.trim().length <= 2000;
-  const step4Valid = confirmCalls && confirmCosts && !exceedsLimit;
+  const reviewValid = confirmCalls && confirmCosts && !exceedsLimit;
 
   function handleCsvFile(file: File) {
     if (file.size > 10 * 1024 * 1024) {
@@ -294,7 +293,7 @@ export default function CreateCampaignWizard({
   }
 
   function handleNext() {
-    if (step < 4) setStep(step + 1);
+    if (step < 3) setStep(step + 1);
   }
 
   function handleBack() {
@@ -307,7 +306,7 @@ export default function CreateCampaignWizard({
   }
 
   async function handleLaunch() {
-    if (!step4Valid) return;
+    if (!reviewValid) return;
     setLaunching(true);
     setLaunchStep(1);
 
@@ -411,17 +410,15 @@ export default function CreateCampaignWizard({
     }
   }
 
-  const totalSteps = 4;
+  const totalSteps = 3;
   const progressPct = (step / totalSteps) * 100;
 
   const nextLabel = step === 1 ? "Next: Upload Contacts"
-    : step === 2 ? "Next: Call Script"
-    : step === 3 ? "Next: Review"
+    : step === 2 ? "Next: Review"
     : "Launch";
 
   const nextDisabled = (step === 1 && !step1Valid) ||
-    (step === 2 && !step2Valid) ||
-    (step === 3 && !step3Valid);
+    (step === 2 && !step2Valid);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -437,7 +434,7 @@ export default function CreateCampaignWizard({
           <div className="px-6 pb-4">
             <Progress value={progressPct} className="h-1.5" />
             <div className="flex justify-between mt-2 text-[10px] text-muted-foreground">
-              {["Details", "Contacts", "Script", "Review"].map((label, i) => (
+              {["Details", "Contacts", "Review"].map((label, i) => (
                 <span key={label} className={i + 1 <= step ? "font-semibold text-foreground" : ""}>
                   {label}
                 </span>
@@ -460,9 +457,8 @@ export default function CreateCampaignWizard({
               remaining={remaining} exceedsLimit={exceedsLimit}
             />
           )}
-          {step === 3 && <Step3 data={data} update={update} primaryColor={primaryColor} />}
-          {step === 4 && (
-            <Step4
+          {step === 3 && (
+            <Step3Review
               data={data} primaryColor={primaryColor}
               validContacts={validContacts}
               usageLimit={usageLimit} usageConsumed={usageConsumed}
@@ -504,12 +500,12 @@ export default function CreateCampaignWizard({
             </Button>
           )}
           <div className="flex gap-2">
-            {step === 4 && (
+            {step === 3 && (
               <Button variant="outline" onClick={handleSaveAsDraft} disabled={launching}>
                 <Save className="h-4 w-4 mr-1" /> Save as Draft
               </Button>
             )}
-            {step < 4 ? (
+            {step < 3 ? (
               <Button
                 onClick={handleNext}
                 disabled={nextDisabled}
@@ -521,7 +517,7 @@ export default function CreateCampaignWizard({
             ) : (
               <Button
                 onClick={handleLaunch}
-                disabled={!step4Valid || launching}
+                disabled={!reviewValid || launching}
                 style={{ backgroundColor: primaryColor, color: "white" }}
                 className="min-w-[160px]"
               >
@@ -952,276 +948,9 @@ function Step2({
   );
 }
 
-/* ─── Step 3: Call Script ─── */
+/* ─── Step 3: Review & Launch ─── */
 
-function Step3({
-  data, update, primaryColor,
-}: {
-  data: WizardData;
-  update: <K extends keyof WizardData>(key: K, val: WizardData[K]) => void;
-  primaryColor: string;
-}) {
-  const scriptRef = useRef<HTMLTextAreaElement>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const [newQuestion, setNewQuestion] = useState("");
-
-  const charCount = data.script.length;
-  const tooShort = charCount > 0 && charCount < 50;
-  const tooLong = charCount > 2000;
-
-  function insertVariable(variable: string) {
-    const el = scriptRef.current;
-    if (!el) {
-      update("script", data.script + variable);
-      return;
-    }
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const newScript = data.script.slice(0, start) + variable + data.script.slice(end);
-    update("script", newScript);
-    setTimeout(() => {
-      el.focus();
-      el.setSelectionRange(start + variable.length, start + variable.length);
-    }, 0);
-  }
-
-  function getPreviewScript() {
-    return data.script
-      .replace(/\{name\}/g, "John Doe")
-      .replace(/\{company\}/g, "ABC Corp")
-      .replace(/\{email\}/g, "john@example.com")
-      .replace(/\{phone\}/g, "+91 98765 43210");
-  }
-
-  function addQuestion() {
-    if (!newQuestion.trim()) return;
-    update("qualifyingQuestions", [...data.qualifyingQuestions, newQuestion.trim()]);
-    setNewQuestion("");
-  }
-
-  function removeQuestion(idx: number) {
-    update("qualifyingQuestions", data.qualifyingQuestions.filter((_, i) => i !== idx));
-  }
-
-  // Script suggestions
-  const suggestions: string[] = [];
-  if (data.script.length > 0) {
-    if (!data.script.includes("{name}")) suggestions.push("Consider adding personalization with {name}");
-    if (data.script.length < 200) suggestions.push("Add a clear call-to-action for better results");
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Script Editor */}
-      <div className="space-y-2">
-        <Label>Call Script <span className="text-destructive">*</span></Label>
-
-        {/* Variable chips */}
-        <div className="flex flex-wrap gap-1.5">
-          {VARIABLE_CHIPS.map(v => (
-            <button
-              key={v.key}
-              type="button"
-              onClick={() => insertVariable(v.key)}
-              className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border bg-primary/10 hover:bg-primary/20 transition-colors"
-              style={{ borderColor: primaryColor + "40", color: primaryColor }}
-            >
-              {v.label} <span className="font-mono opacity-70">{v.key}</span>
-            </button>
-          ))}
-        </div>
-
-        <Textarea
-          ref={scriptRef}
-          placeholder="Write your call script here...&#10;&#10;Example:&#10;Hello {name}, this is calling from ABC Company.&#10;I'm reaching out to {company} because we have a special offer..."
-          value={data.script}
-          onChange={e => update("script", e.target.value)}
-          className="min-h-[240px] font-mono text-sm"
-          maxLength={2100}
-        />
-        <div className="flex justify-between text-[11px]">
-          <div>
-            {tooShort && <span className="text-destructive">Minimum 50 characters required</span>}
-            {tooLong && <span className="text-destructive">Maximum 2000 characters exceeded</span>}
-          </div>
-          <span className={`${tooLong ? "text-destructive" : "text-muted-foreground"}`}>
-            {charCount} / 2000
-          </span>
-        </div>
-
-        {/* Suggestions */}
-        {suggestions.length > 0 && (
-          <div className="space-y-1">
-            {suggestions.map((s, i) => (
-              <p key={i} className="text-[11px] text-amber-600 flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3 shrink-0" /> {s}
-              </p>
-            ))}
-          </div>
-        )}
-
-        {/* Preview */}
-        {data.script.length > 0 && (
-          <div>
-            <Button variant="ghost" size="sm" className="text-xs" onClick={() => setShowPreview(!showPreview)}>
-              <Eye className="h-3.5 w-3.5 mr-1" />
-              {showPreview ? "Hide Preview" : "Preview with Sample Contact"}
-            </Button>
-            {showPreview && (
-              <div className="mt-2 rounded-lg border bg-muted/30 p-4 text-sm whitespace-pre-wrap">
-                {getPreviewScript()}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Voice Settings */}
-      <div className="space-y-4">
-        <p className="text-sm font-semibold flex items-center gap-2">
-          <Settings className="h-4 w-4" /> Voice Settings
-        </p>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label className="text-xs">AI Voice</Label>
-            <Select value={data.voice} onValueChange={v => update("voice", v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {VOICES.map(v => (
-                  <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs">Language</Label>
-            <Select value={data.language} onValueChange={v => update("language", v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {LANGUAGES.map(l => (
-                  <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs">Speaking Speed: {data.speakingSpeed}x</Label>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-muted-foreground">Slow</span>
-            <Slider
-              value={[data.speakingSpeed]}
-              onValueChange={v => update("speakingSpeed", v[0])}
-              min={0.8}
-              max={1.5}
-              step={0.1}
-              className="flex-1"
-            />
-            <span className="text-[10px] text-muted-foreground">Fast</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Call Behavior */}
-      <div className="space-y-4">
-        <p className="text-sm font-semibold">Call Behavior</p>
-
-        {/* Lead Qualification */}
-        <div className="flex items-center justify-between rounded-lg border p-3">
-          <div>
-            <p className="text-sm font-medium">Lead Qualification</p>
-            <p className="text-[11px] text-muted-foreground">AI will ask qualifying questions and score leads</p>
-          </div>
-          <Switch
-            checked={data.leadQualification}
-            onCheckedChange={v => update("leadQualification", v)}
-          />
-        </div>
-        {data.leadQualification && (
-          <div className="ml-4 space-y-2">
-            <Label className="text-xs">Qualifying Questions</Label>
-            {data.qualifyingQuestions.map((q, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
-                <span className="flex-1 p-2 rounded border bg-muted/30">{q}</span>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeQuestion(i)}>
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-            <div className="flex gap-2">
-              <Input
-                placeholder="e.g., What's your budget?"
-                value={newQuestion}
-                onChange={e => setNewQuestion(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && addQuestion()}
-                className="text-xs"
-              />
-              <Button variant="outline" size="sm" onClick={addQuestion} disabled={!newQuestion.trim()}>
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Call Recording */}
-        <div className="flex items-center justify-between rounded-lg border p-3">
-          <div>
-            <p className="text-sm font-medium">Record Calls</p>
-            <p className="text-[11px] text-muted-foreground">All calls will be recorded and transcribed</p>
-          </div>
-          <Switch
-            checked={data.callRecording}
-            onCheckedChange={v => update("callRecording", v)}
-          />
-        </div>
-
-        {/* Voicemail Detection */}
-        <div className="flex items-center justify-between rounded-lg border p-3">
-          <div>
-            <p className="text-sm font-medium">Detect Voicemail</p>
-            <p className="text-[11px] text-muted-foreground">Skip or leave message when voicemail detected</p>
-          </div>
-          <Switch
-            checked={data.voicemailDetection}
-            onCheckedChange={v => update("voicemailDetection", v)}
-          />
-        </div>
-        {data.voicemailDetection && (
-          <div className="ml-4 space-y-3">
-            <RadioGroup
-              value={data.voicemailAction}
-              onValueChange={v => update("voicemailAction", v as "skip" | "leave_message")}
-              className="space-y-2"
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="skip" id="vm-skip" />
-                <Label htmlFor="vm-skip" className="text-xs font-normal cursor-pointer">Skip voicemail</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="leave_message" id="vm-msg" />
-                <Label htmlFor="vm-msg" className="text-xs font-normal cursor-pointer">Leave a message</Label>
-              </div>
-            </RadioGroup>
-            {data.voicemailAction === "leave_message" && (
-              <Textarea
-                placeholder="Voicemail message script..."
-                value={data.voicemailScript}
-                onChange={e => update("voicemailScript", e.target.value)}
-                className="min-h-[80px] text-sm"
-              />
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Step 4: Review & Launch ─── */
-
-function Step4({
+function Step3Review({
   data, primaryColor, validContacts,
   usageLimit, usageConsumed, exceedsLimit,
   confirmCalls, setConfirmCalls,
@@ -1289,26 +1018,7 @@ function Step4({
         </CardContent>
       </Card>
 
-      {/* Script */}
-      <Card>
-        <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <FileText className="h-4 w-4" /> Call Script
-          </CardTitle>
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => goToStep(3)}>
-            <Pencil className="h-3 w-3 mr-1" /> Edit
-          </Button>
-        </CardHeader>
-        <CardContent className="p-4 pt-0 text-xs space-y-1">
-          <p className="text-muted-foreground line-clamp-3 whitespace-pre-wrap">{data.script}</p>
-          <Row label="Voice" value={voiceLabel} />
-          <Row label="Language" value={langLabel} />
-          <Row label="Speed" value={`${data.speakingSpeed}x`} />
-          <Row label="Lead Qualification" value={data.leadQualification ? "Enabled" : "Disabled"} />
-          <Row label="Call Recording" value={data.callRecording ? "Enabled" : "Disabled"} />
-          <Row label="Voicemail Detection" value={data.voicemailDetection ? (data.voicemailAction === "skip" ? "Skip" : "Leave Message") : "Disabled"} />
-        </CardContent>
-      </Card>
+
 
       {/* Usage Impact */}
       <Card className={exceedsLimit ? "border-destructive" : ""}>
