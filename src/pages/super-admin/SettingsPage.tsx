@@ -17,8 +17,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  User, Settings, Mail, Shield, Bell, Webhook, Cpu,
-  Save, Loader2, Copy, RefreshCw, AlertTriangle, Eye, EyeOff, Check,
+  User, Settings, Mail, Shield, Bell,
+  Save, Loader2, RefreshCw, AlertTriangle,
 } from "lucide-react";
 
 type SettingsMap = Record<string, string>;
@@ -33,9 +33,6 @@ export default function SettingsPage() {
   // Profile state
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-
-  // Webhook secret visibility
-  const [showSecret, setShowSecret] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     const { data, error } = await (supabase as any).from("platform_settings").select("key, value");
@@ -106,20 +103,6 @@ export default function SettingsPage() {
     toast({ title: "Copied to clipboard" });
   };
 
-  const regenerateWebhookSecret = async () => {
-    setSaving("webhook");
-    try {
-      const newSecret = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-        .map((b) => b.toString(16).padStart(2, "0")).join("");
-      await saveSetting("webhook_secret", newSecret);
-      toast({ title: "Webhook secret regenerated" });
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
-    } finally {
-      setSaving(null);
-    }
-  };
-
   if (loading) {
     return (
       <div className="space-y-6">
@@ -147,8 +130,6 @@ export default function SettingsPage() {
           <TabsTrigger value="profile" className="gap-1.5"><User className="h-4 w-4" />Profile</TabsTrigger>
           <TabsTrigger value="platform" className="gap-1.5"><Settings className="h-4 w-4" />Platform</TabsTrigger>
           <TabsTrigger value="email" className="gap-1.5"><Mail className="h-4 w-4" />Email</TabsTrigger>
-          <TabsTrigger value="n8n" className="gap-1.5"><Cpu className="h-4 w-4" />n8n</TabsTrigger>
-          <TabsTrigger value="webhooks" className="gap-1.5"><Webhook className="h-4 w-4" />Webhooks</TabsTrigger>
           <TabsTrigger value="security" className="gap-1.5"><Shield className="h-4 w-4" />Security</TabsTrigger>
           <TabsTrigger value="notifications" className="gap-1.5"><Bell className="h-4 w-4" />Notifications</TabsTrigger>
         </TabsList>
@@ -191,57 +172,6 @@ export default function SettingsPage() {
         {/* TAB 3: Email */}
         <TabsContent value="email">
           <EmailTab settings={settings} saving={saving} onSave={saveMultipleSettings} />
-        </TabsContent>
-
-        {/* TAB 4: n8n */}
-        <TabsContent value="n8n">
-          <N8nTab settings={settings} saving={saving} onSave={saveMultipleSettings} />
-        </TabsContent>
-
-        {/* TAB 5: Webhooks */}
-        <TabsContent value="webhooks">
-          <Card>
-            <CardHeader>
-              <CardTitle>Webhook Settings</CardTitle>
-              <CardDescription>Platform webhook endpoints for n8n callbacks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {[
-                { label: "Call Status Webhook", path: "/api/webhook/call-status" },
-                { label: "Lead Captured Webhook", path: "/api/webhook/lead-captured" },
-                { label: "Message Status Webhook", path: "/api/webhook/message-status" },
-              ].map((wh) => (
-                <div key={wh.path} className="space-y-1">
-                  <Label>{wh.label}</Label>
-                  <div className="flex gap-2">
-                    <Input value={`${platformUrl}${wh.path}`} readOnly className="font-mono text-xs" />
-                    <Button variant="outline" size="icon" onClick={() => copyToClipboard(`${platformUrl}${wh.path}`)}>
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              <div className="space-y-1 pt-4 border-t">
-                <Label>Webhook Secret</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={showSecret ? (settings.webhook_secret || "") : "••••••••••••••••••••"}
-                    readOnly className="font-mono text-xs"
-                  />
-                  <Button variant="outline" size="icon" onClick={() => setShowSecret(!showSecret)}>
-                    {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                  <Button variant="outline" size="icon" onClick={() => copyToClipboard(settings.webhook_secret || "")}>
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <Button variant="secondary" className="mt-2" onClick={regenerateWebhookSecret} disabled={saving === "webhook"}>
-                  {saving === "webhook" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Regenerate Secret
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* TAB 6: Security */}
@@ -378,57 +308,6 @@ function EmailTab({ settings, saving, onSave }: { settings: SettingsMap; saving:
           {saving === "email" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Save Email Settings
         </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function N8nTab({ settings, saving, onSave }: { settings: SettingsMap; saving: string | null; onSave: (e: Record<string, string>, s: string) => Promise<void> }) {
-  const { toast } = useToast();
-  const [local, setLocal] = useState({ n8n_url: settings.n8n_url || "", n8n_api_key: settings.n8n_api_key || "" });
-  const [testing, setTesting] = useState(false);
-
-  useEffect(() => {
-    setLocal({ n8n_url: settings.n8n_url || "", n8n_api_key: settings.n8n_api_key || "" });
-  }, [settings]);
-
-  const testConnection = async () => {
-    if (!local.n8n_url) { toast({ title: "Enter n8n URL first", variant: "destructive" }); return; }
-    setTesting(true);
-    try {
-      const res = await fetch(`${local.n8n_url.replace(/\/$/, "")}/api/v1/workflows?limit=1`, {
-        headers: { "X-N8N-API-KEY": local.n8n_api_key },
-      });
-      if (res.ok) {
-        toast({ title: "Connection successful!", description: "n8n is reachable." });
-      } else {
-        toast({ title: "Connection failed", description: `Status: ${res.status}`, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Connection failed", description: "Could not reach n8n server", variant: "destructive" });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>n8n Integration</CardTitle><CardDescription>Connect to your n8n automation server</CardDescription></CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2"><Label>n8n URL</Label><Input value={local.n8n_url} onChange={(e) => setLocal({ ...local, n8n_url: e.target.value })} placeholder="https://your-n8n.example.com" /></div>
-          <div className="space-y-2"><Label>n8n API Key</Label><Input type="password" value={local.n8n_api_key} onChange={(e) => setLocal({ ...local, n8n_api_key: e.target.value })} /></div>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={() => onSave(local, "n8n")} disabled={saving === "n8n"}>
-            {saving === "n8n" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save
-          </Button>
-          <Button variant="outline" onClick={testConnection} disabled={testing}>
-            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Test Connection
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );
