@@ -76,16 +76,7 @@ export default function InboundServicePage() {
   const [loading, setLoading] = useState(true);
   const [assignedNumbers, setAssignedNumbers] = useState<InboundNumber[]>([]);
   const [selectedNumId, setSelectedNumId] = useState<string | null>(null);
-  const [agent, setAgent] = useState<Partial<InboundAgent>>({
-    name: "AI Receptionist",
-    greeting_message: "Hello, thank you for calling. How can I assist you today?",
-    system_prompt: "You are a helpful office assistant. Be professional and concise.",
-    voice_id: "aura-helena-en",
-    model: "gpt-4o",
-    tone: "professional"
-  });
   const [logs, setLogs] = useState<CallLog[]>([]);
-  const [saving, setSaving] = useState(false);
   const [selectedLog, setSelectedLog] = useState<CallLog | null>(null);
 
   const leads = useMemo(() => logs.filter(l => l.is_lead), [logs]);
@@ -111,16 +102,6 @@ export default function InboundServicePage() {
         const firstNum = nums[0];
         setSelectedNumId(firstNum.id);
         
-        // 2. Fetch agent config for this number
-        const { data: rawAgentData } = await supabase
-          .from("inbound_agents" as any)
-          .select("*")
-          .eq("number_id", firstNum.id)
-          .maybeSingle();
-        
-        const agentData = rawAgentData as any;
-        if (agentData) setAgent(agentData as Partial<InboundAgent>);
-
         // 3. Fetch call logs
         const { data: rawLogData } = await supabase
           .from("inbound_call_logs" as any)
@@ -141,32 +122,6 @@ export default function InboundServicePage() {
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
-
-  const handleSaveAgent = async () => {
-    if (!selectedNumId) return;
-    setSaving(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const payload = {
-        ...agent,
-        number_id: selectedNumId,
-        owner_user_id: user.id
-      };
-
-      const { error } = await supabase
-        .from("inbound_agents" as any)
-        .upsert(payload, { onConflict: 'number_id' });
-
-      if (error) throw error;
-      toast({ title: "Agent Updated", description: "Your inbound agent configuration has been saved." });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (loading) return <LoadingSkeleton />;
 
@@ -219,7 +174,7 @@ export default function InboundServicePage() {
         <TabsList className="mb-6">
           <TabsTrigger value="calls">Calls ({logs.length})</TabsTrigger>
           <TabsTrigger value="leads">Leads ({leads.length})</TabsTrigger>
-          <TabsTrigger value="overview">Overview & Configuration</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
         </TabsList>
         <TabsContent value="calls">
           <Card>
@@ -279,98 +234,9 @@ export default function InboundServicePage() {
         </TabsContent>
 
         <TabsContent value="overview">
-          <div className="grid gap-6 md:grid-cols-12">
-            {/* Left Column: Configuration */}
-        <div className="md:col-span-12 lg:col-span-7 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bot className="h-5 w-5 text-primary" /> Agent Configuration
-              </CardTitle>
-              <CardDescription>Configure how the AI answers your calls on {activeNum?.phone_number}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Agent Name</Label>
-                  <Input value={agent.name} onChange={e => setAgent(p => ({...p, name: e.target.value}))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Model</Label>
-                  <Select value={agent.model} onValueChange={v => setAgent(p => ({...p, model: v}))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="gpt-4o">GPT-4o (Smart)</SelectItem>
-                      <SelectItem value="gpt-4o-mini">GPT-4o Mini (Fast)</SelectItem>
-                      <SelectItem value="claude-3-5">Claude 3.5 Sonnet</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-muted-foreground" /> Greeting Message
-                </Label>
-                <Textarea 
-                  placeholder="What the AI says when picking up..." 
-                  value={agent.greeting_message}
-                  onChange={e => setAgent(p => ({...p, greeting_message: e.target.value}))}
-                  rows={3}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Mic className="h-4 w-4 text-muted-foreground" /> System Instructions/Prompt
-                </Label>
-                <Textarea 
-                  placeholder="Define who the AI is and what it should do..." 
-                  value={agent.system_prompt}
-                  onChange={e => setAgent(p => ({...p, system_prompt: e.target.value}))}
-                  rows={6}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Voice</Label>
-                  <Select value={agent.voice_id} onValueChange={v => setAgent(p => ({...p, voice_id: v}))}>
-                    <SelectTrigger><Volume2 className="h-4 w-4 mr-2" /><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="aura-helena-en">Helena (Professional)</SelectItem>
-                      <SelectItem value="aura-luna-en">Luna (Friendly)</SelectItem>
-                      <SelectItem value="aura-stella-en">Stella (Smooth)</SelectItem>
-                      <SelectItem value="aura-orion-en">Orion (Male, Authority)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Tone</Label>
-                  <Select value={agent.tone} onValueChange={v => setAgent(p => ({...p, tone: v}))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="professional">Professional</SelectItem>
-                      <SelectItem value="friendly">Friendly</SelectItem>
-                      <SelectItem value="concise">Concise & Direct</SelectItem>
-                      <SelectItem value="empathetic">Empathetic</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <Button className="w-full" onClick={handleSaveAgent} disabled={saving}>
-                  {saving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Save Configuration
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column: Mini Logs/Stats */}
-        <div className="md:col-span-12 lg:col-span-5 space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Overview Stats */}
+            <div className="space-y-6">
           <Card className="bg-primary/5 border-primary/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center justify-between">
