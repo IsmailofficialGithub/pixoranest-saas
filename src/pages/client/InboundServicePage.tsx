@@ -47,6 +47,8 @@ interface InboundNumber {
   phone_number: string;
   label: string | null;
   status: string;
+  provider_id: string | null;
+  provider_bot_name: string | null;
 }
 
 interface InboundAgent {
@@ -92,23 +94,23 @@ export default function InboundServicePage() {
         .from("inbound_numbers" as any)
         .select("*")
         .eq("assigned_user_id", user.id);
-      
+
       const nums = rawNums as any[] | null;
-      
+
       if (numError) throw numError;
       setAssignedNumbers(nums || []);
 
       if (nums && nums.length > 0) {
         const firstNum = nums[0];
         setSelectedNumId(firstNum.id);
-        
+
         // 3. Fetch call logs
         const { data: rawLogData } = await supabase
           .from("inbound_call_logs" as any)
           .select("*")
           .eq("number_id", firstNum.id)
           .order("created_at", { ascending: false });
-        
+
         const logData = rawLogData as any[] | null;
         setLogs(logData || []);
       }
@@ -133,7 +135,7 @@ export default function InboundServicePage() {
         </div>
         <h2 className="text-2xl font-bold mb-2">No Inbound Number Assigned</h2>
         <p className="text-muted-foreground max-w-md mb-8">
-          You don't have any inbound phone numbers assigned to your account yet. 
+          You don't have any inbound phone numbers assigned to your account yet.
           Please contact support or your administrator to get a number.
         </p>
         <Button variant="outline" onClick={fetchInitialData}>
@@ -144,12 +146,53 @@ export default function InboundServicePage() {
   }
 
   const activeNum = assignedNumbers.find(n => n.id === selectedNumId);
+  const isBotReady = activeNum?.provider_id && activeNum?.provider_bot_name;
+
+  if (!isBotReady) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6">
+        <div className="bg-destructive/5 rounded-full p-6 mb-6">
+          <Bot className="h-16 w-16 text-destructive" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Bot Configuration Incomplete</h2>
+        <p className="text-muted-foreground max-w-md mb-8">
+          The inbound number <strong>{activeNum?.phone_number}</strong> is not fully configured by the administrator (missing Provider Agent ID or Bot Name).
+          Please contact your administrator to complete the setup.
+        </p>
+        <div className="flex gap-4">
+          <Button variant="outline" onClick={fetchInitialData}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Refresh Status
+          </Button>
+          <Select value={selectedNumId || ""} onValueChange={setSelectedNumId}>
+            <SelectTrigger className="w-[200px]">
+              <PhoneIncoming className="mr-2 h-4 w-4 text-primary" />
+              <SelectValue placeholder="Select Number" />
+            </SelectTrigger>
+            <SelectContent>
+              {assignedNumbers.map(n => (
+                <SelectItem key={n.id} value={n.id}>{n.phone_number}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Inbound Voice Agent</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground">
+              {activeNum?.provider_bot_name || "Inbound Voice Agent"}
+            </h1>
+            {activeNum?.provider_id && (
+              <Badge variant="outline" className="text-[10px] font-mono">
+                ID: {activeNum.provider_id}
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">Configure your AI receptionist and view call history</p>
         </div>
         <div className="flex items-center gap-3">
@@ -237,87 +280,87 @@ export default function InboundServicePage() {
           <div className="grid gap-6 md:grid-cols-2">
             {/* Overview Stats */}
             <div className="space-y-6">
-          <Card className="bg-primary/5 border-primary/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center justify-between">
-                Current Status
-                <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-200">Online</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Active Number</span>
-                <span className="font-mono font-medium">{activeNum?.phone_number}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Provider</span>
-                <span className="capitalize">Twilio</span>
-              </div>
-              <div className="pt-2 border-t flex justify-around text-center">
-                <div>
-                  <p className="text-2xl font-bold">{logs.length}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase">Total Calls</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-green-600">
-                    {logs.filter(l => l.call_status === 'answered').length}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground uppercase">Answered</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-yellow-600">
-                    {logs.filter(l => l.call_status === 'missed').length}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground uppercase">Missed</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              <Card className="bg-primary/5 border-primary/20">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center justify-between">
+                    Current Status
+                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-200">Online</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Active Number</span>
+                    <span className="font-mono font-medium">{activeNum?.phone_number}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Provider</span>
+                    <span className="capitalize">Twilio</span>
+                  </div>
+                  <div className="pt-2 border-t flex justify-around text-center">
+                    <div>
+                      <p className="text-2xl font-bold">{logs.length}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase">Total Calls</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-green-600">
+                        {logs.filter(l => l.call_status === 'answered').length}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground uppercase">Answered</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-yellow-600">
+                        {logs.filter(l => l.call_status === 'missed').length}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground uppercase">Missed</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <History className="h-4 w-4" /> Recent Activity
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-               {logs.length === 0 ? (
-                 <div className="p-8 text-center text-sm text-muted-foreground">
-                   No calls recorded yet.
-                 </div>
-               ) : (
-                 <div className="divide-y max-h-[400px] overflow-y-auto">
-                   {logs.slice(0, 5).map(log => (
-                     <div key={log.id} className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors">
-                       <div className="flex flex-col">
-                         <span className="text-sm font-medium">{log.caller_number}</span>
-                         <span className="text-[10px] text-muted-foreground">
-                           {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
-                         </span>
-                       </div>
-                       <div className="flex items-center gap-3">
-                         <Badge variant="outline" className={cn(
-                           "text-[10px] uppercase h-5",
-                           log.call_status === 'answered' ? "text-green-600 border-green-200 bg-green-50" : "text-muted-foreground"
-                         )}>
-                           {log.call_status}
-                         </Badge>
-                         <div className="text-[10px] font-mono">
-                           {formatDuration(log.duration)}
-                         </div>
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               )}
-            </CardContent>
-            {logs.length > 5 && (
-              <div className="p-3 bg-muted/30 border-t text-center">
-                <Button variant="ghost" size="sm" className="text-xs h-7">View All Logs</Button>
-              </div>
-            )}
-          </Card>
-        </div>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <History className="h-4 w-4" /> Recent Activity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {logs.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">
+                      No calls recorded yet.
+                    </div>
+                  ) : (
+                    <div className="divide-y max-h-[400px] overflow-y-auto">
+                      {logs.slice(0, 5).map(log => (
+                        <div key={log.id} className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">{log.caller_number}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="outline" className={cn(
+                              "text-[10px] uppercase h-5",
+                              log.call_status === 'answered' ? "text-green-600 border-green-200 bg-green-50" : "text-muted-foreground"
+                            )}>
+                              {log.call_status}
+                            </Badge>
+                            <div className="text-[10px] font-mono">
+                              {formatDuration(log.duration)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+                {logs.length > 5 && (
+                  <div className="p-3 bg-muted/30 border-t text-center">
+                    <Button variant="ghost" size="sm" className="text-xs h-7">View All Logs</Button>
+                  </div>
+                )}
+              </Card>
+            </div>
           </div>
         </TabsContent>
         <TabsContent value="leads">

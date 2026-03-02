@@ -28,6 +28,8 @@ interface InboundNumber {
   country_code: string;
   label: string | null;
   provider: string | null;
+  provider_id: string | null;
+  provider_bot_name: string | null;
   assigned_user_id: string | null;
   status: string;
   created_at: string;
@@ -40,14 +42,20 @@ export default function InboundNumbersPage() {
   const [numbers, setNumbers] = useState<InboundNumber[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  
+
   // Dialogs
   const [addOpen, setAddOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [selectedNumber, setSelectedNumber] = useState<InboundNumber | null>(null);
-  
+
   // Forms
-  const [newNumber, setNewNumber] = useState({ phone_number: "", provider: "Twilio", label: "" });
+  const [newNumber, setNewNumber] = useState({
+    phone_number: "",
+    provider: "Twilio",
+    label: "",
+    provider_id: "",
+    provider_bot_name: ""
+  });
   const [userSearch, setUserSearch] = useState("");
   const [userResults, setUserResults] = useState<any[]>([]);
   const [assigning, setAssigning] = useState(false);
@@ -86,13 +94,16 @@ export default function InboundNumbersPage() {
   }, [fetchNumbers]);
 
   const handleAddNumber = async () => {
-    if (!newNumber.phone_number) return;
+    if (!newNumber.phone_number || !newNumber.provider_id || !newNumber.provider_bot_name) {
+      toast({ title: "Validation Error", description: "Phone number, Provider Agent ID, and Bot Name are required.", variant: "destructive" });
+      return;
+    }
     try {
       const { error } = await supabase.from("inbound_numbers" as any).insert([newNumber]);
       if (error) throw error;
       toast({ title: "Success", description: "Phone number added successfully." });
       setAddOpen(false);
-      setNewNumber({ phone_number: "", provider: "Twilio", label: "" });
+      setNewNumber({ phone_number: "", provider: "Twilio", label: "", provider_id: "", provider_bot_name: "" });
       fetchNumbers();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -128,7 +139,7 @@ export default function InboundNumbersPage() {
         .from("inbound_numbers" as any)
         .update({ assigned_user_id: userId, status: 'assigned' })
         .eq("id", selectedNumber.id);
-      
+
       if (error) throw error;
       toast({ title: "Assigned", description: "Number assigned to client." });
       setAssignOpen(false);
@@ -140,8 +151,8 @@ export default function InboundNumbersPage() {
     }
   };
 
-  const filtered = numbers.filter(n => 
-    n.phone_number.includes(search) || 
+  const filtered = numbers.filter(n =>
+    n.phone_number.includes(search) ||
     (n.label && n.label.toLowerCase().includes(search.toLowerCase())) ||
     (n.owner_email && n.owner_email.toLowerCase().includes(search.toLowerCase()))
   );
@@ -204,8 +215,9 @@ export default function InboundNumbersPage() {
                   <TableCell className="font-mono font-medium">{num.phone_number}</TableCell>
                   <TableCell>
                     <div className="flex flex-col">
-                      <span className="text-sm">{num.provider || "Twilio"}</span>
+                      <span className="text-sm font-semibold">{num.provider || "Twilio"}</span>
                       {num.label && <span className="text-xs text-muted-foreground">{num.label}</span>}
+                      {num.provider_id && <span className="text-[10px] text-muted-foreground">ID: {num.provider_id}</span>}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -217,14 +229,14 @@ export default function InboundNumbersPage() {
                     {num.owner_email ? (
                       <div className="flex items-center gap-2">
                         <span className="text-sm">{num.owner_email}</span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" 
-                                onClick={() => { setSelectedNumber(num); setAssignOpen(true); }}>
+                        <Button variant="ghost" size="icon" className="h-6 w-6"
+                          onClick={() => { setSelectedNumber(num); setAssignOpen(true); }}>
                           <X className="h-3 w-3 text-muted-foreground" />
                         </Button>
                       </div>
                     ) : (
-                      <Button variant="ghost" size="sm" className="text-primary h-8" 
-                              onClick={() => { setSelectedNumber(num); setAssignOpen(true); }}>
+                      <Button variant="ghost" size="sm" className="text-primary h-8"
+                        onClick={() => { setSelectedNumber(num); setAssignOpen(true); }}>
                         <UserPlus className="mr-2 h-4 w-4" /> Assign User
                       </Button>
                     )}
@@ -246,23 +258,24 @@ export default function InboundNumbersPage() {
 
       {/* Add Number Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Add Inbound Number</DialogTitle>
             <DialogDescription>Add a new phone number to your inventory.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Phone Number (E.164 format)</Label>
-              <Input placeholder="+1234567890" value={newNumber.phone_number} 
-                     onChange={e => setNewNumber(p => ({...p, phone_number: e.target.value}))} />
+              <Label>Phone Number <span className="text-destructive">*</span></Label>
+              <Input type="number" placeholder="919876543210" value={newNumber.phone_number}
+                onChange={e => setNewNumber(p => ({ ...p, phone_number: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Provider</Label>
-                <Select value={newNumber.provider} onValueChange={v => setNewNumber(p => ({...p, provider: v}))}>
+                <Select value={newNumber.provider} onValueChange={v => setNewNumber(p => ({ ...p, provider: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="Omni Dimension">Omni Dimension</SelectItem>
                     <SelectItem value="Twilio">Twilio</SelectItem>
                     <SelectItem value="Vonage">Vonage</SelectItem>
                     <SelectItem value="Telnyx">Telnyx</SelectItem>
@@ -272,14 +285,27 @@ export default function InboundNumbersPage() {
               </div>
               <div className="space-y-2">
                 <Label>Label (Optional)</Label>
-                <Input placeholder="General Support" value={newNumber.label} 
-                       onChange={e => setNewNumber(p => ({...p, label: e.target.value}))} />
+                <Input placeholder="General Support" value={newNumber.label}
+                  onChange={e => setNewNumber(p => ({ ...p, label: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Provider Agent ID <span className="text-destructive">*</span></Label>
+                <Input placeholder="Agent ID" value={newNumber.provider_id}
+                  onChange={e => setNewNumber(p => ({ ...p, provider_id: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Bot Name <span className="text-destructive">*</span></Label>
+                <Input placeholder="Bot Name" value={newNumber.provider_bot_name}
+                  onChange={e => setNewNumber(p => ({ ...p, provider_bot_name: e.target.value }))} />
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddNumber} disabled={!newNumber.phone_number}>Add Number</Button>
+            <Button onClick={handleAddNumber} disabled={!newNumber.phone_number || !newNumber.provider_id || !newNumber.provider_bot_name}>Add Number</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -301,7 +327,7 @@ export default function InboundNumbersPage() {
                 <div className="rounded-md border divide-y overflow-hidden">
                   {userResults.map(u => (
                     <div key={u.user_id} className="p-3 hover:bg-muted cursor-pointer flex justify-between items-center"
-                         onClick={() => handleAssign(u.user_id)}>
+                      onClick={() => handleAssign(u.user_id)}>
                       <div className="flex flex-col">
                         <span className="text-sm font-medium">{u.email}</span>
                         <span className="text-xs text-muted-foreground">{u.full_name || "No name"}</span>
