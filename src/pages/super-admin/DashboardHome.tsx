@@ -13,6 +13,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 
 interface StatsData {
   totalAdmins: number;
@@ -229,7 +235,18 @@ export default function DashboardHome() {
                       className="cursor-pointer"
                       onClick={() => navigate(`/super-admin/admins/${a.id}`)}
                     >
-                      <TableCell className="font-medium">{a.company_name}</TableCell>
+                      <TableCell className="font-medium">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="block max-w-[120px] truncate">
+                              {a.company_name}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{a.company_name}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell className="text-center">
                         <Badge 
                           variant="outline" 
@@ -243,10 +260,17 @@ export default function DashboardHome() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="text-sm">{a.profile_name ?? "—"}</p>
-                          <p className="text-xs text-muted-foreground">{a.profile_email}</p>
-                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="max-w-[120px]">
+                              <p className="text-sm truncate">{a.profile_name ?? "—"}</p>
+                              <p className="text-xs text-muted-foreground truncate">{a.profile_email}</p>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{a.profile_name ?? "—"} ({a.profile_email})</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{a.client_count}</Badge>
@@ -302,7 +326,18 @@ export default function DashboardHome() {
                       className="cursor-pointer"
                       onClick={() => navigate(`/super-admin/clients/${c.id}`)}
                     >
-                      <TableCell className="font-medium">{c.company_name}</TableCell>
+                      <TableCell className="font-medium">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="block max-w-[120px] truncate">
+                              {c.company_name}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{c.company_name}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell className="text-center">
                         <Badge 
                           variant="outline" 
@@ -316,12 +351,30 @@ export default function DashboardHome() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="text-sm">{c.profile_name ?? "—"}</p>
-                          <p className="text-xs text-muted-foreground">{c.profile_email}</p>
-                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="max-w-[120px]">
+                              <p className="text-sm truncate">{c.profile_name ?? "—"}</p>
+                              <p className="text-xs text-muted-foreground truncate">{c.profile_email}</p>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{c.profile_name ?? "—"} ({c.profile_email})</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </TableCell>
-                      <TableCell className="text-sm">{c.admin_company ?? "—"}</TableCell>
+                      <TableCell className="text-sm">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="block max-w-[100px] truncate">
+                              {c.admin_company ?? "—"}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{c.admin_company ?? "—"}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell>
                         <Badge variant={c.is_active ? "default" : "destructive"}>
                           {c.is_active ? "Active" : "Inactive"}

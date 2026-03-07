@@ -15,6 +15,11 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import AdminServiceAssignment from "@/components/super-admin/AdminServiceAssignment";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface AdminDetail {
   id: string;
@@ -228,12 +233,30 @@ export default function AdminDetailPage() {
                       className="cursor-pointer"
                       onClick={() => navigate(`/super-admin/clients/${c.id}`)}
                     >
-                      <TableCell className="font-medium">{c.company_name}</TableCell>
+                      <TableCell className="font-medium">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="block max-w-[150px] truncate">
+                              {c.company_name}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{c.company_name}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="text-sm">{c.profile_name ?? "—"}</p>
-                          <p className="text-xs text-muted-foreground">{c.profile_email}</p>
-                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="max-w-[150px]">
+                              <p className="text-sm truncate">{c.profile_name ?? "—"}</p>
+                              <p className="text-xs text-muted-foreground truncate">{c.profile_email}</p>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{c.profile_name ?? "—"} ({c.profile_email})</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge variant="secondary">{c.active_services}</Badge>

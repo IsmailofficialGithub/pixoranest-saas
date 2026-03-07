@@ -29,6 +29,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ClientRow {
   id: string;
@@ -402,14 +407,47 @@ export default function ClientsPage() {
                     className="cursor-pointer"
                     onClick={() => navigate(`/super-admin/clients/${client.id}`)}
                   >
-                    <TableCell className="font-medium">{client.company_name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="block max-w-[150px] truncate">
+                            {client.company_name}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{client.company_name}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">Client</Badge>
                     </TableCell>
-                    <TableCell>{client.full_name ?? "—"}</TableCell>
+                    <TableCell>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="block max-w-[150px] truncate">
+                            {client.full_name ?? "—"}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{client.full_name ?? "—"}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{client.email}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs">{client.admin_company}</Badge>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="max-w-[120px]">
+                            <Badge variant="outline" className="text-xs block truncate w-full text-center">
+                              {client.admin_company}
+                            </Badge>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{client.admin_company}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="secondary">{client.active_services_count} services</Badge>

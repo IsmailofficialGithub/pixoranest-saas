@@ -23,6 +23,11 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface AdminRow {
   id: string;
@@ -311,11 +316,33 @@ export default function AdminsPage() {
                     className="cursor-pointer"
                     onClick={() => navigate(`/super-admin/admins/${admin.id}`)}
                   >
-                    <TableCell className="font-medium">{admin.company_name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="block max-w-[150px] truncate">
+                            {admin.company_name}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{admin.company_name}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Admin</Badge>
                     </TableCell>
-                    <TableCell>{admin.full_name ?? "—"}</TableCell>
+                    <TableCell>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="block max-w-[150px] truncate">
+                            {admin.full_name ?? "—"}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{admin.full_name ?? "—"}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{admin.email}</TableCell>
                     <TableCell className="text-center">{admin.commission_rate ?? 0}%</TableCell>
                     <TableCell className="text-center">

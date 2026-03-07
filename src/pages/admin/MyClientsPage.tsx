@@ -30,6 +30,11 @@ import {
 } from "@/components/ui/dialog";
 import ClientFormModal from "@/components/admin/ClientFormModal";
 import AssignServicesModal from "@/components/admin/AssignServicesModal";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type ClientRow = {
   id: string;
@@ -455,7 +460,14 @@ export default function MyClientsPage() {
                     </Avatar>
                     <div className="min-w-0">
                       <CardTitle className="text-sm font-bold truncate leading-none mb-1">
-                        {client.company_name}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>{client.company_name}</span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{client.company_name}</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </CardTitle>
                       <p className="text-[11px] text-muted-foreground truncate opacity-80">
                         {client.profile?.full_name || "No contact"}
@@ -559,7 +571,16 @@ export default function MyClientsPage() {
                         <Avatar className="h-8 w-8">
                           <AvatarFallback className="bg-primary/10 text-primary text-xs">{getInitials(client.company_name)}</AvatarFallback>
                         </Avatar>
-                        <span className="font-medium text-foreground">{client.company_name}</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-medium text-foreground max-w-[150px] truncate">
+                              {client.company_name}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{client.company_name}</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{client.profile?.full_name || "—"}</TableCell>
