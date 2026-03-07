@@ -270,20 +270,21 @@ export default function ClientFormModal({ open, onOpenChange, client, onSuccess 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
+      <DialogContent className="sm:max-w-lg w-[95vw] sm:w-full max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-0">
+          <DialogTitle className="text-lg sm:text-xl truncate">
             {isEdit ? `Edit Client - ${client?.company_name}` : "Add New Client"}
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full" style={{ gridTemplateColumns: isEdit ? "1fr 1fr 1fr" : "1fr 1fr 1fr 1fr" }}>
-            <TabsTrigger value="basic">Basic Info</TabsTrigger>
-            <TabsTrigger value="contact">Contact</TabsTrigger>
-            {!isEdit && <TabsTrigger value="account">Account</TabsTrigger>}
-            <TabsTrigger value="permissions">Permissions</TabsTrigger>
-          </TabsList>
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="w-full justify-start overflow-x-auto inline-flex whitespace-nowrap scrollbar-hide">
+              <TabsTrigger value="basic" className="flex-1 sm:flex-none">Basic Info</TabsTrigger>
+              <TabsTrigger value="contact" className="flex-1 sm:flex-none">Contact</TabsTrigger>
+              {!isEdit && <TabsTrigger value="account" className="flex-1 sm:flex-none">Account</TabsTrigger>}
+              <TabsTrigger value="permissions" className="flex-1 sm:flex-none">Permissions</TabsTrigger>
+            </TabsList>
 
           <TabsContent value="basic" className="space-y-4 mt-4">
             <div>
@@ -431,13 +432,14 @@ export default function ClientFormModal({ open, onOpenChange, client, onSuccess 
               <Switch checked={allowRawAccess} onCheckedChange={setAllowRawAccess} />
             </div>
           </TabsContent>
-        </Tabs>
+          </Tabs>
+        </div>
 
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
+        <div className="flex justify-end gap-2 p-4 border-t bg-background">
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={mutation.isPending}>
+          <Button className="flex-1 sm:flex-none" onClick={handleSubmit} disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isEdit ? "Save Changes" : "Create Client"}
           </Button>

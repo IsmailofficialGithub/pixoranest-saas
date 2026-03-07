@@ -138,9 +138,9 @@ export default function AssignServicesModal({ open, onOpenChange, clientId, clie
     enabled: open && !!clientId,
   });
 
-  // Initialize configs when services load
+  // Initialize configs when services load or modal opens
   useEffect(() => {
-    if (services.length > 0 && Object.keys(configs).length === 0) {
+    if (open && services.length > 0 && Object.keys(configs).length === 0) {
       const initial: Record<string, ServiceConfig> = {};
       services.forEach((s) => {
         initial[s.id] = {
@@ -153,13 +153,14 @@ export default function AssignServicesModal({ open, onOpenChange, clientId, clie
       });
       setConfigs(initial);
     }
-  }, [services]);
+  }, [services, open, configs]);
 
   // Reset on close
   useEffect(() => {
     if (!open) {
       setConfigs({});
       setSuccessResult(null);
+      setCategoryOpen({ voice: true, messaging: true, social_media: true });
     }
   }, [open]);
 
@@ -340,25 +341,27 @@ export default function AssignServicesModal({ open, onOpenChange, clientId, clie
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0">
-        <DialogHeader className="p-6 pb-0">
-          <DialogTitle>Assign Services — {clientCompanyName}</DialogTitle>
+      <DialogContent className="sm:max-w-2xl w-[95vw] sm:w-full max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="p-3 sm:p-4 pb-0">
+          <DialogTitle className="text-base sm:text-lg line-clamp-1">Assign Services — {clientCompanyName}</DialogTitle>
         </DialogHeader>
 
         {/* Select All */}
-        <div className="px-6 flex items-center gap-3">
+        <div className="px-3 sm:px-4 flex items-center gap-2">
           <Checkbox
+            id="select-all-services"
+            className="h-3.5 w-3.5"
             checked={services.filter((s) => s.has_admin_pricing).length > 0 &&
               services.filter((s) => s.has_admin_pricing).every((s) => configs[s.id]?.selected)}
             onCheckedChange={selectAll}
           />
-          <Label className="text-sm cursor-pointer" onClick={selectAll}>Select all services</Label>
+          <Label htmlFor="select-all-services" className="text-xs cursor-pointer font-medium">Select all services</Label>
         </div>
 
         <Separator />
 
         {/* Services List */}
-        <div className="flex-1 px-6 overflow-y-auto min-h-0 py-2">
+        <div className="flex-1 px-3 sm:px-4 overflow-y-auto min-h-0 py-1">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -418,104 +421,109 @@ export default function AssignServicesModal({ open, onOpenChange, clientId, clie
                                   </div>
                                 )}
                                  {service.already_assigned && (
-                                   <Button
-                                     variant="ghost"
-                                     size="sm"
-                                     className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                                     onClick={(e) => {
-                                       e.stopPropagation();
-                                       if (confirm(`Unassign "${service.name}" from ${clientCompanyName}?`)) {
-                                         unassignMutation.mutate(service.id);
-                                       }
-                                     }}
-                                     disabled={unassignMutation.isPending}
-                                   >
-                                     <Trash2 className="h-3 w-3 mr-1" />
-                                     Unassign
-                                   </Button>
+                                   <div className="mt-1.5">
+                                     <Button
+                                       variant="outline"
+                                       size="sm"
+                                       className="h-7 px-2 text-[10px] sm:text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         if (confirm(`Unassign "${service.name}" from ${clientCompanyName}?`)) {
+                                           unassignMutation.mutate(service.id);
+                                         }
+                                       }}
+                                       disabled={unassignMutation.isPending}
+                                     >
+                                       <Trash2 className="h-3 w-3 mr-1" />
+                                       Unassign
+                                     </Button>
+                                   </div>
                                  )}
-                                {canSelect ? (
-                                  <p className="text-xs text-muted-foreground">₹{service.admin_price?.toFixed(2)} per {unit}</p>
-                                ) : (
-                                  <p className="text-xs text-destructive flex items-center gap-1">
-                                    <AlertTriangle className="h-3 w-3" /> Set your pricing first
-                                  </p>
-                                )}
-                              </div>
-                              {cfg.selected && (
-                                <Button
-                                  variant="ghost" size="icon" className="h-7 w-7"
-                                  onClick={(e) => { e.stopPropagation(); updateConfig(service.id, { expanded: !cfg.expanded }); }}
-                                >
-                                  {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                </Button>
-                              )}
-                            </div>
+                                 {canSelect ? (
+                                   <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">₹{service.admin_price?.toFixed(2)} / {unit}</p>
+                                 ) : (
+                                   <p className="text-[11px] sm:text-xs text-destructive flex items-center gap-1 mt-0.5">
+                                     <AlertTriangle className="h-3 w-3" /> Set pricing first
+                                   </p>
+                                 )}
+                               </div>
+                               {cfg.selected && (
+                                 <Button
+                                   variant="ghost" size="icon" className="h-8 w-8 shrink-0 focus-visible:ring-0"
+                                   onClick={(e) => { e.stopPropagation(); updateConfig(service.id, { expanded: !cfg.expanded }); }}
+                                 >
+                                   {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                 </Button>
+                               )}
+                             </div>
 
                             {/* Expanded config */}
                             {isExpanded && (
                               <div className="border-t bg-muted/30 p-4 space-y-4">
-                                {/* Plan selection */}
-                                {service.plans.length > 0 && (
-                                  <div>
-                                    <Label className="text-xs font-medium">Select Plan</Label>
-                                    <RadioGroup
-                                      value={cfg.planId || "custom"}
-                                      onValueChange={(v) => {
-                                        const plan = service.plans.find((p) => p.id === v);
-                                        updateConfig(service.id, {
-                                          planId: v === "custom" ? null : v,
-                                          usageLimit: plan?.usage_limit || cfg.usageLimit,
-                                        });
-                                      }}
-                                      className="mt-2 space-y-2"
-                                    >
-                                      {service.plans.map((plan) => (
-                                        <div key={plan.id} className="flex items-center gap-2 rounded border p-2">
-                                          <RadioGroupItem value={plan.id} />
-                                          <div className="flex-1">
-                                            <span className="text-sm font-medium text-foreground">{plan.plan_name}</span>
-                                            {plan.plan_tier && <Badge variant="secondary" className="ml-2 text-xs">{plan.plan_tier}</Badge>}
-                                          </div>
-                                          <span className="text-xs text-muted-foreground">
-                                            {plan.usage_limit ? `${plan.usage_limit} ${unit}s` : "Unlimited"}
-                                          </span>
-                                        </div>
-                                      ))}
-                                      <div className="flex items-center gap-2 rounded border p-2">
-                                        <RadioGroupItem value="custom" />
-                                        <span className="text-sm font-medium text-foreground">Custom Limits</span>
-                                      </div>
-                                    </RadioGroup>
-                                  </div>
-                                )}
+                                 {/* Plan selection */}
+                                 {service.plans.length > 0 && (
+                                   <div className="space-y-1.5">
+                                     <Label className="text-xs font-semibold">Select Plan</Label>
+                                     <RadioGroup
+                                       value={cfg.planId || "custom"}
+                                       onValueChange={(v) => {
+                                         const plan = service.plans.find((p) => p.id === v);
+                                         updateConfig(service.id, {
+                                           planId: v === "custom" ? null : v,
+                                           usageLimit: plan?.usage_limit || cfg.usageLimit,
+                                         });
+                                       }}
+                                       className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                                     >
+                                       {service.plans.map((plan) => (
+                                         <div key={plan.id} className="flex items-center gap-2 rounded-md border p-2.5 bg-background">
+                                           <RadioGroupItem value={plan.id} id={`plan-${plan.id}`} />
+                                           <div className="flex-1 min-w-0">
+                                              <Label htmlFor={`plan-${plan.id}`} className="text-xs font-medium truncate block">
+                                                {plan.plan_name}
+                                                {plan.plan_tier && <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[9px] uppercase">{plan.plan_tier}</Badge>}
+                                              </Label>
+                                              <p className="text-[10px] text-muted-foreground">
+                                                {plan.usage_limit ? `${plan.usage_limit} ${unit}s` : "Unlimited"}
+                                              </p>
+                                           </div>
+                                         </div>
+                                       ))}
+                                       <div className="flex items-center gap-2 rounded-md border p-2.5 bg-background">
+                                         <RadioGroupItem value="custom" id={`plan-${service.id}-custom`} />
+                                         <Label htmlFor={`plan-${service.id}-custom`} className="text-xs font-medium">Custom Limits</Label>
+                                       </div>
+                                     </RadioGroup>
+                                   </div>
+                                 )}
 
-                                {/* Usage limit */}
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div>
-                                    <Label className="text-xs">Usage Limit</Label>
-                                    <Input
-                                      type="number"
-                                      min={1}
-                                      max={1000000}
-                                      value={cfg.usageLimit}
-                                      onChange={(e) => updateConfig(service.id, { usageLimit: Math.max(1, parseInt(e.target.value) || 1) })}
-                                    />
-                                    <p className="text-[10px] text-muted-foreground mt-1">{cfg.usageLimit} {unit}s per {cfg.resetPeriod}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs">Reset Period</Label>
-                                    <Select value={cfg.resetPeriod} onValueChange={(v) => updateConfig(service.id, { resetPeriod: v })}>
-                                      <SelectTrigger><SelectValue /></SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="daily">Daily</SelectItem>
-                                        <SelectItem value="weekly">Weekly</SelectItem>
-                                        <SelectItem value="monthly">Monthly</SelectItem>
-                                        <SelectItem value="never">Never (Unlimited)</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </div>
+                                 {/* Usage limit */}
+                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                   <div className="space-y-1.5">
+                                     <Label className="text-[11px] font-medium uppercase text-muted-foreground">Usage Limit</Label>
+                                     <Input
+                                       type="number"
+                                       min={1}
+                                       max={1000000}
+                                       className="h-9"
+                                       value={cfg.usageLimit}
+                                       onChange={(e) => updateConfig(service.id, { usageLimit: Math.max(1, parseInt(e.target.value) || 1) })}
+                                     />
+                                     <p className="text-[10px] text-muted-foreground">{cfg.usageLimit} {unit}s / {cfg.resetPeriod}</p>
+                                   </div>
+                                   <div className="space-y-1.5">
+                                     <Label className="text-[11px] font-medium uppercase text-muted-foreground">Reset Period</Label>
+                                     <Select value={cfg.resetPeriod} onValueChange={(v) => updateConfig(service.id, { resetPeriod: v })}>
+                                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                       <SelectContent>
+                                         <SelectItem value="daily">Daily</SelectItem>
+                                         <SelectItem value="weekly">Weekly</SelectItem>
+                                         <SelectItem value="monthly">Monthly</SelectItem>
+                                         <SelectItem value="never">Never (Unlimited)</SelectItem>
+                                       </SelectContent>
+                                     </Select>
+                                   </div>
+                                 </div>
 
                                 {/* Price summary */}
                                 {service.admin_price && (
@@ -551,43 +559,43 @@ export default function AssignServicesModal({ open, onOpenChange, clientId, clie
 
         {/* Bottom summary */}
         {summary.totalCount > 0 && (
-          <>
+          <div className="mt-auto bg-muted/40 whitespace-nowrap">
             <Separator />
-            <div className="p-4 space-y-2 bg-muted/30">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Services selected</span>
-                <span className="font-medium text-foreground">{summary.totalCount}</span>
+            <div className="px-3 py-1.5 space-y-0.5">
+              <div className="max-h-16 overflow-y-auto pr-1">
+                {summary.items.map((item) => (
+                  <div key={item.name} className="flex justify-between text-[10px] leading-tight py-0.5">
+                    <span className="text-muted-foreground truncate mr-4">{item.name}</span>
+                    <span className="text-foreground font-medium">₹{item.cost.toLocaleString()}</span>
+                  </div>
+                ))}
               </div>
-              {summary.items.map((item) => (
-                <div key={item.name} className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">{item.name} ({item.unit})</span>
-                  <span className="text-foreground">₹{item.cost.toLocaleString()}</span>
+              <div className="flex justify-between items-center pt-1 border-t border-muted-foreground/10">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-foreground">Total Estimated</span>
+                  {summary.totalProfit > 0 && (
+                    <span className="text-[9px] text-green-600 font-medium">Earn +₹{summary.totalProfit.toLocaleString()}</span>
+                  )}
                 </div>
-              ))}
-              <Separator />
-              <div className="flex justify-between text-sm font-semibold">
-                <span className="text-foreground">Total estimated</span>
-                <span className="text-foreground">₹{summary.totalCost.toLocaleString()}/month</span>
+                <div className="text-sm font-bold text-foreground">
+                  ₹{summary.totalCost.toLocaleString()}<span className="text-[10px] font-normal text-muted-foreground">/mo</span>
+                </div>
               </div>
-              {summary.totalProfit > 0 && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Your commission</span>
-                  <span className="text-green-600 font-medium">₹{summary.totalProfit.toLocaleString()}</span>
-                </div>
-              )}
             </div>
-          </>
+          </div>
         )}
 
         {/* Actions */}
-        <div className="p-4 border-t flex justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <div className="p-3 border-t flex flex-col sm:flex-row justify-end gap-2 bg-background">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="w-full sm:w-auto order-2 sm:order-1 h-8">Cancel</Button>
           <Button
+            size="sm"
             onClick={() => assignMutation.mutate()}
             disabled={summary.totalCount === 0 || assignMutation.isPending}
+            className="w-full sm:w-auto order-1 sm:order-2 h-8"
           >
-            {assignMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Assign {summary.totalCount > 0 ? `${summary.totalCount} Service${summary.totalCount > 1 ? "s" : ""}` : "Services"}
+            {assignMutation.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+            {assignMutation.isPending ? "Assigning..." : `Assign ${summary.totalCount} Service${summary.totalCount > 1 ? "s" : ""}`}
           </Button>
         </div>
       </DialogContent>

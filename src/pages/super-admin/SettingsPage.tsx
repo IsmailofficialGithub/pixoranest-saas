@@ -18,8 +18,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   User, Settings, Mail, Shield, Bell,
-  Save, Loader2, RefreshCw, AlertTriangle,
+  Save, Loader2, RefreshCw, AlertTriangle, Eye, EyeOff, Lock,
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 type SettingsMap = Record<string, string>;
 
@@ -33,6 +34,30 @@ export default function SettingsPage() {
   // Profile state
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+
+  // Password state
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  // Password strength helper
+  const getPasswordStrength = (pw: string) => {
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (/[A-Z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+    if (score <= 1) return { label: "Weak", pct: 25, color: "bg-destructive" };
+    if (score === 2) return { label: "Fair", pct: 50, color: "bg-yellow-500" };
+    if (score === 3) return { label: "Good", pct: 75, color: "bg-blue-500" };
+    return { label: "Strong", pct: 100, color: "bg-green-500" };
+  };
+
+  const pwStrength = getPasswordStrength(newPassword);
 
   const fetchSettings = useCallback(async () => {
     const { data, error } = await (supabase as any).from("platform_settings").select("key, value");
@@ -98,6 +123,49 @@ export default function SettingsPage() {
     }
   };
 
+  const handleChangePassword = async () => {
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      toast({ title: "Please fill in all fields", variant: "destructive" });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Passwords do not match", variant: "destructive" });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      // First, verify old password by attempting to sign in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user?.email || "",
+        password: oldPassword,
+      });
+
+      if (signInError) {
+        throw new Error("Incorrect current password");
+      }
+
+      // Then update password
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      
+      toast({ title: "Password updated successfully" });
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e: any) {
+      toast({ title: "Error updating password", description: e.message, variant: "destructive" });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast({ title: "Copied to clipboard" });
@@ -159,6 +227,101 @@ export default function SettingsPage() {
               <Button onClick={handleSaveProfile} disabled={saving === "profile"}>
                 {saving === "profile" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save Profile
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Security & Password</CardTitle>
+              <CardDescription>Update your account password</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 max-w-md">
+              <div className="space-y-2">
+                <Label htmlFor="old-password">Current Password</Label>
+                <div className="relative">
+                  <Input 
+                    id="old-password" 
+                    type={showOldPassword ? "text" : "password"} 
+                    value={oldPassword} 
+                    onChange={(e) => setOldPassword(e.target.value)} 
+                    placeholder="Enter current password" 
+                  />
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="sm" 
+                    className="absolute right-1 top-1 h-8 w-8 p-0" 
+                    onClick={() => setShowOldPassword(!showOldPassword)}
+                  >
+                    {showOldPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <div className="relative">
+                  <Input 
+                    id="new-password" 
+                    type={showNewPassword ? "text" : "password"} 
+                    value={newPassword} 
+                    onChange={(e) => setNewPassword(e.target.value)} 
+                    placeholder="Min 8 characters" 
+                  />
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="sm" 
+                    className="absolute right-1 top-1 h-8 w-8 p-0" 
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                  >
+                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {newPassword && (
+                  <div className="space-y-1.5 mt-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium">{pwStrength.label}</span>
+                      <span className="text-xs text-muted-foreground">{pwStrength.pct}%</span>
+                    </div>
+                    <Progress value={pwStrength.pct} className={`h-1.5 ${pwStrength.color}`} />
+                    <ul className="text-[10px] grid grid-cols-2 gap-x-2 gap-y-0.5 mt-1 text-muted-foreground">
+                      <li className={newPassword.length >= 8 ? "text-green-600" : ""}>• 8+ characters</li>
+                      <li className={/[A-Z]/.test(newPassword) ? "text-green-600" : ""}>• Uppercase letter</li>
+                      <li className={/[0-9]/.test(newPassword) ? "text-green-600" : ""}>• Number</li>
+                      <li className={/[^A-Za-z0-9]/.test(newPassword) ? "text-green-600" : ""}>• Special character</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <div className="relative">
+                  <Input 
+                    id="confirm-password" 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    value={confirmPassword} 
+                    onChange={(e) => setConfirmPassword(e.target.value)} 
+                    placeholder="Repeat new password" 
+                  />
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="sm" 
+                    className="absolute right-1 top-1 h-8 w-8 p-0" 
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {confirmPassword && newPassword !== confirmPassword && (
+                  <p className="text-xs text-destructive">Passwords do not match</p>
+                )}
+              </div>
+              <Button onClick={handleChangePassword} disabled={changingPassword || !newPassword || newPassword !== confirmPassword}>
+                {changingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                Update Password
               </Button>
             </CardContent>
           </Card>

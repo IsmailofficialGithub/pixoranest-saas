@@ -324,8 +324,8 @@ export default function MyClientsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">My Clients</h1>
-          <p className="text-muted-foreground">{stats.total} clients total</p>
+          <h1 className="text-xl font-bold text-foreground">My Clients</h1>
+          <p className="text-xs text-muted-foreground">{stats.total} clients total</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => exportCSV(filtered)}>
@@ -438,70 +438,75 @@ export default function MyClientsPage() {
           </CardContent>
         </Card>
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {paginated.map((client) => (
             <Card
               key={client.id}
-              className="cursor-pointer hover:shadow-md transition-shadow"
+              className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
               onClick={() => navigate(`/admin/clients/${client.id}`)}
             >
-              <CardHeader className="pb-3">
+              <CardHeader className="p-3 sm:p-4 pb-2">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar className="h-8 w-8 shrink-0">
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                         {getInitials(client.company_name)}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <CardTitle className="text-base">{client.company_name}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{client.profile?.full_name || "No contact"}</p>
+                    <div className="min-w-0">
+                      <CardTitle className="text-sm font-bold truncate leading-none mb-1">
+                        {client.company_name}
+                      </CardTitle>
+                      <p className="text-[11px] text-muted-foreground truncate opacity-80">
+                        {client.profile?.full_name || "No contact"}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <Badge variant={client.is_active ? "default" : "secondary"} className={client.is_active ? "bg-green-500/10 text-green-600 border-green-200" : ""}>
-                      {client.is_active ? "Active" : "Inactive"}
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <Badge 
+                      variant={client.is_active ? "default" : "secondary"} 
+                      className={`h-5 px-1.5 text-[10px] uppercase font-bold tracking-tight ${client.is_active ? "bg-green-500/10 text-green-600 border-green-200" : ""}`}
+                    >
+                      {client.is_active ? "Active" : "Off"}
                     </Badge>
                     <ActionMenu client={client} />
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-1 text-sm">
+              <CardContent className="p-3 sm:p-4 pt-0 space-y-2.5">
+                <div className="space-y-1 text-[11px] border-b border-muted/30 pb-2">
                   {client.profile?.email && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Mail className="h-3.5 w-3.5" /> <span className="truncate">{client.profile.email}</span>
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Mail className="h-3 w-3 shrink-0" /> <span className="truncate">{client.profile.email}</span>
                     </div>
                   )}
                   {client.profile?.phone && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Phone className="h-3.5 w-3.5" /> {client.profile.phone}
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Phone className="h-3 w-3 shrink-0" /> {client.profile.phone}
                     </div>
                   )}
                 </div>
-                {client.industry && <Badge variant="outline" className="text-xs">{client.industry}</Badge>}
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+
+                <div className="grid grid-cols-3 gap-1 py-1">
                   <div className="text-center">
-                    <div className="flex justify-center"><Package className="h-4 w-4 text-primary" /></div>
-                    <p className="text-sm font-semibold text-foreground">{client.active_services_count}</p>
-                    <p className="text-[10px] text-muted-foreground">Services</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Services</p>
+                    <p className="text-xs font-bold text-foreground">{client.active_services_count}</p>
+                  </div>
+                  <div className="text-center border-x border-muted/50">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Usage</p>
+                    <p className="text-xs font-bold text-foreground">{client.total_usage}</p>
                   </div>
                   <div className="text-center">
-                    <div className="flex justify-center"><Activity className="h-4 w-4 text-blue-500" /></div>
-                    <p className="text-sm font-semibold text-foreground">{client.total_usage}</p>
-                    <p className="text-[10px] text-muted-foreground">Usage</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="flex justify-center"><DollarSign className="h-4 w-4 text-green-500" /></div>
-                    <p className="text-sm font-semibold text-foreground">₹{client.total_revenue.toLocaleString()}</p>
-                    <p className="text-[10px] text-muted-foreground">Revenue</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Rev.</p>
+                    <p className="text-xs font-bold text-green-600">₹{Math.round(client.total_revenue).toLocaleString()}</p>
                   </div>
                 </div>
+
                 <div onClick={(e) => e.stopPropagation()}>
                   <Button
                     variant={client.active_services_count > 0 ? "outline" : "default"}
                     size="sm"
-                    className="w-full"
+                    className="w-full h-8 text-[11px] font-semibold"
                     onClick={() => {
                       setAssignClientId(client.id);
                       setAssignClientName(client.company_name);
