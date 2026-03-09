@@ -185,7 +185,7 @@ export default function InboundServicePage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-foreground">
-              {activeNum?.provider_bot_name || "Inbound Voice Agent"}
+              First Voice
             </h1>
             {activeNum?.provider_id && (
               <Badge variant="outline" className="text-[10px] font-mono">

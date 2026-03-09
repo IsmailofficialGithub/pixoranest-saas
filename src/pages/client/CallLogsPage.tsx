@@ -150,71 +150,98 @@ export default function CallLogsPage() {
     if (!client) return;
     setLoading(true);
 
-    // Build query
-    let query: any = (supabase as any)
-      .from("outbound_call_logs")
-      .select("*", { count: "exact" })
-      .eq("owner_user_id", client.user_id)
-      .order("created_at", { ascending: false })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    // Fetch from both tables
+    const [standardRes, outboundRes] = await Promise.all([
+      supabase
+        .from("call_logs")
+        .select("*", { count: "exact" })
+        .eq("client_id", client.id)
+        .order("executed_at", { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1),
+      (supabase as any)
+        .from("outbound_call_logs")
+        .select("*", { count: "exact" })
+        .eq("owner_user_id", client.user_id)
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+    ]);
 
-    if (dateFrom) query = query.gte("created_at", startOfDay(dateFrom).toISOString());
-    if (dateTo) query = query.lte("created_at", endOfDay(dateTo).toISOString());
-    if (debouncedSearch) {
-      query = query.or(`phone.ilike.%${debouncedSearch}%,transcript.ilike.%${debouncedSearch}%`);
-    }
-    if (statusFilters.length > 0) {
-      query = query.in("call_status", statusFilters);
-    }
-
-    const { data: logs, count, error } = await query;
-    if (error) {
-      console.error("Error fetching call logs:", error);
+    if (standardRes.error || outboundRes.error) {
+      console.error("Error fetching call logs:", standardRes.error || outboundRes.error);
       setLoading(false);
       return;
     }
 
-    setTotalCount(count || 0);
-
-    // Enrich with contact names, campaign names, and lead info
-    const logIds = (logs || []).map((l: any) => l.id);
-    if (logIds.length === 0) {
-      setCallLogs([]);
-      setLoading(false);
-      return;
-    }
+    setTotalCount((standardRes.count || 0) + (outboundRes.count || 0));
 
     const campaignMap = new Map(campaigns.map(c => [c.id, c.campaign_name]));
 
-    let enriched: CallLogEntry[] = (logs || []).map((l: any) => {
-      return {
-        id: l.id,
-        phone_number: l.phone,
-        status: l.call_status,
-        duration_seconds: l.duration,
-        ai_summary: l.transcript,
-        recording_url: l.call_url,
-        transcript: l.transcript,
-        executed_at: l.created_at,
-        call_type: l.call_type,
-        cost: 0,
-        contact_name: l.name || null,
-        campaign_id: l.scheduled_call_id || null,
-        campaign_name: l.scheduled_call_id ? campaignMap.get(l.scheduled_call_id) || null : null,
-        lead_id: null, // Logic for getting lead ID from `leads` table if necessary can be added here
-        lead_score: null,
-      };
-    });
+    // Map standard logs
+    const standardMapped: CallLogEntry[] = (standardRes.data || []).map((l: any) => ({
+      id: l.id,
+      phone_number: l.phone_number,
+      status: l.status,
+      duration_seconds: l.duration_seconds,
+      ai_summary: l.ai_summary,
+      recording_url: l.recording_url,
+      transcript: l.transcript,
+      executed_at: l.executed_at,
+      call_type: l.call_type,
+      cost: 0,
+      contact_name: null,
+      campaign_id: l.service_id,
+      campaign_name: null,
+      lead_id: null,
+      lead_score: null,
+    }));
 
-    // Client-side filters that can't easily be done server-side
+    // Map outbound logs
+    const outboundMapped: CallLogEntry[] = (outboundRes.data || []).map((l: any) => ({
+      id: l.id,
+      phone_number: l.phone,
+      status: l.call_status,
+      duration_seconds: l.duration,
+      ai_summary: l.transcript,
+      recording_url: l.call_url,
+      transcript: l.transcript,
+      executed_at: l.created_at,
+      call_type: l.call_type,
+      cost: 0,
+      contact_name: l.name || null,
+      campaign_id: l.scheduled_call_id || null,
+      campaign_name: l.scheduled_call_id ? campaignMap.get(l.scheduled_call_id) || null : null,
+      lead_id: null,
+      lead_score: null,
+    }));
+
+    // Combine and sort
+    let enriched = [...standardMapped, ...outboundMapped].sort(
+      (a, b) => new Date(b.executed_at || 0).getTime() - new Date(a.executed_at || 0).getTime()
+    );
+
+    // Apply client-side filters
+    if (debouncedSearch) {
+      const s = debouncedSearch.toLowerCase();
+      enriched = enriched.filter(l => 
+        l.phone_number.toLowerCase().includes(s) || 
+        (l.ai_summary || "").toLowerCase().includes(s) ||
+        (l.contact_name || "").toLowerCase().includes(s)
+      );
+    }
+
+    if (statusFilters.length > 0) {
+      enriched = enriched.filter(l => statusFilters.includes(l.status || ""));
+    }
+
     if (campaignFilter !== "all") {
       enriched = enriched.filter(l => l.campaign_id === campaignFilter);
     }
+    
     if (leadsOnly) {
       enriched = enriched.filter(l => l.lead_id);
     }
 
-    setCallLogs(enriched);
+    setCallLogs(enriched.slice(0, PAGE_SIZE));
     setLoading(false);
   }, [client, page, debouncedSearch, statusFilters, dateFrom, dateTo, campaignFilter, leadsOnly, campaigns]);
 

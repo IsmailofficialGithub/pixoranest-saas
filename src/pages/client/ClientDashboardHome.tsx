@@ -17,7 +17,7 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 import { ServiceCard } from "@/components/services/ServiceCard";
 import { useClientServices } from "@/hooks/useClientServices";
-import { getServicePath } from "@/lib/service-routes";
+import { getServicePath, SERVICE_LABEL_MAP } from "@/lib/service-routes";
 
 interface DashboardStats {
   activeServices: number;
@@ -55,14 +55,14 @@ export default function ClientDashboardHome() {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    const [leadsRes, campaignsRes, callsRes, listsRes, waMessagesRes] = await Promise.all([
+    const [leadsRes, listsRes, callsRes, outboundCallsRes, waMessagesRes] = await Promise.all([
       supabase.from("leads").select("id", { count: "exact", head: true })
         .eq("client_id", client.id).gte("created_at", monthStart),
-      supabase.from("outbound_contact_lists").select("id", { count: "exact", head: true })
-        .eq("owner_user_id", client.user_id),
+      supabase.from("outbound_contact_lists").select("id, created_at, name", { count: "exact" })
+        .eq("owner_user_id", client.user_id).order("created_at", { ascending: false }).limit(5),
       supabase.from("call_logs").select("id, executed_at, status, phone_number, call_type, service_id")
         .eq("client_id", client.id).order("executed_at", { ascending: false }).limit(5),
-      supabase.from("outbound_contact_lists").select("id, created_at, name")
+      (supabase as any).from("outbound_call_logs").select("id, created_at, call_status, phone, call_type")
         .eq("owner_user_id", client.user_id).order("created_at", { ascending: false }).limit(5),
       supabase.from("whatsapp_messages").select("id, sent_at, status, phone_number")
         .eq("client_id", client.id).order("sent_at", { ascending: false }).limit(5),
@@ -74,11 +74,13 @@ export default function ClientDashboardHome() {
       activeServices: assignedServices.length,
       totalUsage,
       leadsThisMonth: leadsRes.count || 0,
-      activeCampaigns: campaignsRes.count || 0,
+      activeCampaigns: listsRes.count || 0,
     });
 
     // Build activity timeline
     const items: ActivityItem[] = [];
+    
+    // Regular call logs
     callsRes.data?.forEach(c => {
       items.push({
         id: c.id,
@@ -88,6 +90,18 @@ export default function ClientDashboardHome() {
         timestamp: c.executed_at || new Date().toISOString(),
       });
     });
+
+    // Outbound call logs (from the other table)
+    outboundCallsRes.data?.forEach((c: any) => {
+      items.push({
+        id: c.id,
+        type: "call",
+        description: `Outbound call to ${c.phone}`,
+        status: c.call_status || "completed",
+        timestamp: c.created_at || new Date().toISOString(),
+      });
+    });
+
     listsRes.data?.forEach(c => {
       items.push({
         id: c.id,
@@ -97,6 +111,7 @@ export default function ClientDashboardHome() {
         timestamp: c.created_at || new Date().toISOString(),
       });
     });
+
     waMessagesRes.data?.forEach(m => {
       items.push({
         id: m.id,
@@ -288,7 +303,9 @@ export default function ClientDashboardHome() {
                         <ServiceIcon slug={svc.service_slug} color={primaryColor} />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate">{svc.service_name}</p>
+                        <p className="text-sm font-semibold truncate">
+                          {SERVICE_LABEL_MAP[svc.service_slug as keyof typeof SERVICE_LABEL_MAP] || svc.service_name}
+                        </p>
                         <Badge variant="outline" className="text-[10px] capitalize mt-0.5">{svc.service_category}</Badge>
                       </div>
                     </div>
@@ -404,7 +421,7 @@ export default function ClientDashboardHome() {
             {hasService("voice-receptionist") && (
               <QuickActionButton
                 icon={<PhoneIncoming className="h-4 w-4" />}
-                label="Voice Receptionist"
+                label="Call Orbitor"
                 description="Manage inbound calls"
                 color={primaryColor}
                 onClick={() => navigate(getServicePath("voice-receptionist"))}
@@ -413,7 +430,7 @@ export default function ClientDashboardHome() {
             {hasService("voice-agent") && (
               <QuickActionButton
                 icon={<Headphones className="h-4 w-4" />}
-                label="Voice Agent"
+                label="EcoAssist"
                 description="AI voice conversations"
                 color={primaryColor}
                 onClick={() => navigate(getServicePath("voice-agent"))}
@@ -422,7 +439,7 @@ export default function ClientDashboardHome() {
             {hasService("whatsapp") && (
               <QuickActionButton
                 icon={<MessageCircle className="h-4 w-4" />}
-                label="Send WhatsApp Campaign"
+                label="LeadNest"
                 description="Bulk messaging"
                 color={primaryColor}
                 onClick={() => navigate(getServicePath("whatsapp"))}
@@ -431,7 +448,7 @@ export default function ClientDashboardHome() {
             {hasService("social-media") && (
               <QuickActionButton
                 icon={<Share2 className="h-4 w-4" />}
-                label="Schedule Post"
+                label="Socialium"
                 description="Social media management"
                 color={primaryColor}
                 onClick={() => navigate(getServicePath("social-media"))}

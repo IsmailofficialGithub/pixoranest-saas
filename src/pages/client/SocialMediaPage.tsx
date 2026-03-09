@@ -170,7 +170,7 @@ export default function SocialMediaPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">Social Media Automation</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Socialium</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage and schedule posts across all platforms</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

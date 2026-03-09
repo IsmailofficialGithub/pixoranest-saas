@@ -3,7 +3,7 @@
  * DB slugs (e.g. "ai-voice-telecaller") differ from route paths (e.g. "voice-telecaller").
  */
 
-import { Phone, PhoneIncoming, Headphones, MessageCircle, Share2 } from "lucide-react";
+import { Phone, PhoneIncoming, Headphones, MessageCircle, Share2, Mail } from "lucide-react";
 
 export const SERVICE_ROUTE_MAP: Record<string, string> = {
   "ai-voice-telecaller": "voice-telecaller",
@@ -12,6 +12,7 @@ export const SERVICE_ROUTE_MAP: Record<string, string> = {
   "whatsapp-automation": "whatsapp",
   "social-media-automation": "social-media",
   "ai-inbound": "inbound",
+  "email-marketing": "email-marketing",
   // Legacy slugs (if DB already uses short slugs)
   "voice-telecaller": "voice-telecaller",
   "voice-receptionist": "voice-receptionist",
@@ -28,15 +29,17 @@ export const SERVICE_ICON_MAP: Record<string, React.ElementType> = {
   "whatsapp": MessageCircle,
   "social-media": Share2,
   "inbound": PhoneIncoming,
+  "email-marketing": Mail,
 };
 
 export const SERVICE_LABEL_MAP: Record<string, string> = {
-  "voice-telecaller": "Voice Telecaller",
-  "voice-receptionist": "Voice Receptionist",
-  "voice-agent": "Voice Agent",
-  "whatsapp": "WhatsApp",
-  "social-media": "Social Media",
-  "inbound": "Inbound Agent",
+  "voice-telecaller": "Call Orbitor",
+  "voice-receptionist": "Call Orbitor",
+  "voice-agent": "EcoAssist",
+  "whatsapp": "LeadNest",
+  "social-media": "Socialium",
+  "inbound": "First Voice",
+  "email-marketing": "Email Marketing",
 };
 
 /** Convert a DB service slug to the client route segment */

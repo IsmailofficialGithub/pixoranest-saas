@@ -219,7 +219,7 @@ export default function VoiceAgentPage() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2">
             <Bot className="h-6 w-6" style={{ color: primaryColor }} />
-            AI Voice Agent
+            EcoAssist
           </h1>
           <p className="text-sm text-muted-foreground">
             Your AI-powered voice conversations

@@ -27,7 +27,7 @@ import {
   PhoneIncoming, Clock, CheckCircle, PhoneForwarded, Settings, Phone,
   Play, Pause, Copy, Plus, Trash2, GripVertical, MoreVertical,
   Volume2, List, QrCode, ChevronRight, ArrowRight, PhoneCall,
-  Voicemail, Shield, X,
+  Voicemail, Shield, X, Brain,
 } from "lucide-react";
 import { formatDistanceToNow, format, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -73,8 +73,7 @@ interface TeamMember {
 }
 
 interface ReceptionistConfig {
-  greeting: string;
-  menuOptions: MenuOption[];
+  systemPrompt: string;
   voiceCommandsEnabled: boolean;
   voiceCommands: string[];
   timeoutSeconds: number;
@@ -100,13 +99,8 @@ const DEFAULT_BUSINESS_HOURS: BusinessHours[] = [
 ];
 
 const DEFAULT_CONFIG: ReceptionistConfig = {
-  greeting: "Thank you for calling. Please select from the following options.",
-  menuOptions: [
-    { id: "1", pressKey: "1", label: "Sales Department", action: "forward", actionDetail: "" },
-    { id: "2", pressKey: "2", label: "Support", action: "forward", actionDetail: "" },
-    { id: "3", pressKey: "3", label: "Billing", action: "forward", actionDetail: "" },
-    { id: "0", pressKey: "0", label: "Operator", action: "forward", actionDetail: "" },
-  ],
+  systemPrompt: "You are a professional receptionist for a premium business. Greet the caller warmly, ask how you can help, and provide information about our services. If they need to speak with someone specific, ask for their details and mention we will have someone call them back.",
+  menuOptions: [],
   voiceCommandsEnabled: false,
   voiceCommands: [],
   timeoutSeconds: 10,
@@ -290,7 +284,7 @@ export default function VoiceReceptionistPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">AI Voice Receptionist</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Call Orbitor</h1>
           <p className="text-sm text-muted-foreground">Manage your inbound calls with AI</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
@@ -306,7 +300,7 @@ export default function VoiceReceptionistPage() {
             <Switch checked={isActive} onCheckedChange={v => setActivateConfirm(v)} />
           </div>
           <Button variant="outline" size="sm" onClick={() => setIvrEditOpen(true)}>
-            <Settings className="h-4 w-4 mr-1" /> Configure
+            <Settings className="h-4 w-4 mr-1" /> AI Config
           </Button>
         </div>
       </div>
@@ -374,7 +368,7 @@ export default function VoiceReceptionistPage() {
               <PhoneCall className="h-4 w-4 mr-2" /> Test Call
             </Button>
             <Button variant="outline" className="w-full justify-start text-sm" onClick={() => setIvrEditOpen(true)}>
-              <Settings className="h-4 w-4 mr-2" /> IVR Settings
+              <Brain className="h-4 w-4 mr-2" /> AI Instructions
             </Button>
             <Button variant="outline" className="w-full justify-start text-sm" onClick={() => setHoursEditOpen(true)}>
               <Clock className="h-4 w-4 mr-2" /> Business Hours
@@ -389,94 +383,11 @@ export default function VoiceReceptionistPage() {
       {/* Tabbed Content */}
       <Tabs defaultValue="ivr" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="ivr">IVR Menu</TabsTrigger>
           <TabsTrigger value="calls">Recent Calls</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="voicemail">Voicemail</TabsTrigger>
         </TabsList>
 
-        {/* IVR Menu Tab */}
-        <TabsContent value="ivr">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">IVR Menu Setup</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => setIvrEditOpen(true)}>
-                <Settings className="h-4 w-4 mr-1" /> Edit
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {/* Main greeting */}
-              <div className="rounded-lg border p-4 mb-4">
-                <p className="text-xs text-muted-foreground mb-1">Main Greeting</p>
-                <p className="text-sm">"{config.greeting}"</p>
-              </div>
-
-              {/* Menu flow */}
-              <div className="space-y-2">
-                {config.menuOptions.map(opt => (
-                  <div key={opt.id} className="flex items-center gap-3 rounded-lg border p-3">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10 text-primary font-bold text-sm shrink-0">
-                      {opt.pressKey}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{opt.label}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        {opt.action === "forward" ? `Forward to: ${opt.actionDetail || "Not set"}` :
-                         opt.action === "voicemail" ? "Take voicemail" :
-                         opt.action === "message" ? "Play message" : opt.action}
-                      </p>
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                ))}
-              </div>
-
-              {/* Business Hours Summary */}
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold">Business Hours</h3>
-                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => setHoursEditOpen(true)}>
-                    Edit
-                  </Button>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {config.businessHours.map(bh => (
-                    <div key={bh.day} className={`rounded border p-2 text-xs ${bh.enabled ? "" : "opacity-50"}`}>
-                      <p className="font-medium">{bh.day.slice(0, 3)}</p>
-                      <p className="text-muted-foreground">{bh.enabled ? `${bh.from} - ${bh.to}` : "Closed"}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Team Members */}
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold">Team Members ({config.teamMembers.length})</h3>
-                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => setTeamEditOpen(true)}>
-                    Edit
-                  </Button>
-                </div>
-                {config.teamMembers.length > 0 ? (
-                  <div className="space-y-2">
-                    {config.teamMembers.map(tm => (
-                      <div key={tm.id} className="flex items-center gap-3 text-sm border rounded p-2">
-                        <Phone className="h-3 w-3 text-muted-foreground" />
-                        <span className="font-medium">{tm.name}</span>
-                        <span className="text-muted-foreground">{tm.phone}</span>
-                        <Badge variant="outline" className="text-[10px] ml-auto">{tm.department}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No team members added yet</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Recent Calls Tab */}
         <TabsContent value="calls">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -726,143 +637,66 @@ function IVREditDialog({ open, onOpenChange, config, onSave }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit IVR Menu</DialogTitle>
-          <DialogDescription>Configure your receptionist's greeting and menu options.</DialogDescription>
+          <DialogTitle>AI Receptionist Configuration</DialogTitle>
+          <DialogDescription>Configure how your AI receptionist handles incoming calls.</DialogDescription>
         </DialogHeader>
         <div className="space-y-6">
-          {/* Greeting */}
-          <div>
-            <Label>Main Greeting</Label>
-            <Textarea value={local.greeting}
-              onChange={e => setLocal(prev => ({ ...prev, greeting: e.target.value }))}
-              rows={3} maxLength={500} className="mt-1" />
-            <p className="text-xs text-muted-foreground mt-1">{local.greeting.length}/500</p>
-          </div>
-
-          {/* Menu Options */}
-          <div>
-            <Label>Menu Options</Label>
-            <div className="space-y-3 mt-2">
-              {local.menuOptions.map(opt => (
-                <div key={opt.id} className="grid grid-cols-12 gap-2 items-start border rounded-lg p-3">
-                  <div className="col-span-2">
-                    <Label className="text-xs">Key</Label>
-                    <Select value={opt.pressKey} onValueChange={v => updateOption(opt.id, "pressKey", v)}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"].map(k => (
-                          <SelectItem key={k} value={k}>{k}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-3">
-                    <Label className="text-xs">Label</Label>
-                    <Input className="h-9" value={opt.label}
-                      onChange={e => updateOption(opt.id, "label", e.target.value)} placeholder="e.g. Sales" />
-                  </div>
-                  <div className="col-span-3">
-                    <Label className="text-xs">Action</Label>
-                    <Select value={opt.action} onValueChange={v => updateOption(opt.id, "action", v)}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="forward">Forward call</SelectItem>
-                        <SelectItem value="message">Play message</SelectItem>
-                        <SelectItem value="voicemail">Take voicemail</SelectItem>
-                        <SelectItem value="submenu">Submenu</SelectItem>
-                        <SelectItem value="hangup">Hang up</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-3">
-                    <Label className="text-xs">
-                      {opt.action === "forward" ? "Phone" : opt.action === "message" ? "Message" : "Detail"}
-                    </Label>
-                    <Input className="h-9" value={opt.actionDetail}
-                      onChange={e => updateOption(opt.id, "actionDetail", e.target.value)}
-                      placeholder={opt.action === "forward" ? "+91..." : "Text..."} />
-                  </div>
-                  <div className="col-span-1 pt-5">
-                    <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive"
-                      onClick={() => removeOption(opt.id)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              <Button variant="outline" size="sm" onClick={addOption}>
-                <Plus className="h-3 w-3 mr-1" /> Add Option
-              </Button>
+          {/* System Prompt */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold">System Instructions</Label>
+              <Badge variant="outline" className="text-[10px]">AI Driven</Badge>
+            </div>
+            <Textarea 
+              value={local.systemPrompt}
+              onChange={e => setLocal(prev => ({ ...prev, systemPrompt: e.target.value }))}
+              rows={8} 
+              placeholder="Enter instructions for the AI..."
+              className="mt-1 font-mono text-sm leading-relaxed" 
+            />
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-muted-foreground">This prompt defines the personality and behavior of your AI receptionist.</p>
+              <p className="text-[11px] text-muted-foreground">{local.systemPrompt.length} characters</p>
             </div>
           </div>
 
-          {/* Advanced */}
+          <div className="rounded-lg bg-primary/5 p-4 border border-primary/10">
+            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+              <Brain className="h-4 w-4 text-primary" /> How it works
+            </h4>
+            <p className="text-xs text-muted-foreground leading-normal">
+              The IVR system has been replaced with a smart AI agent. The agent will follow these instructions word-for-word to assist your callers, answer their questions, and route calls based on natural conversation.
+            </p>
+          </div>
+
+          {/* Advanced / Fallback */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Timeout (seconds)</Label>
-              <Input type="number" value={local.timeoutSeconds}
-                onChange={e => setLocal(prev => ({ ...prev, timeoutSeconds: Number(e.target.value) }))} className="mt-1" />
-            </div>
-            <div>
-              <Label>Timeout Action</Label>
-              <Select value={local.timeoutAction}
-                onValueChange={v => setLocal(prev => ({ ...prev, timeoutAction: v }))}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="replay">Replay menu</SelectItem>
-                  <SelectItem value="forward">Forward to operator</SelectItem>
-                  <SelectItem value="voicemail">Take voicemail</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Invalid Input Retries</Label>
-              <Input type="number" value={local.invalidInputRetries}
-                onChange={e => setLocal(prev => ({ ...prev, invalidInputRetries: Number(e.target.value) }))} className="mt-1" />
-            </div>
-            <div className="flex items-center gap-3 pt-6">
-              <Switch checked={local.voiceCommandsEnabled}
-                onCheckedChange={v => setLocal(prev => ({ ...prev, voiceCommandsEnabled: v }))} />
-              <Label>Enable Voice Commands</Label>
-            </div>
-          </div>
-
-          {/* After-hours */}
-          <div>
-            <Label>After-Hours Greeting</Label>
-            <Textarea value={local.afterHoursGreeting}
-              onChange={e => setLocal(prev => ({ ...prev, afterHoursGreeting: e.target.value }))}
-              rows={2} className="mt-1" />
-          </div>
-          <div>
-            <Label>After-Hours Action</Label>
-            <Select value={local.afterHoursAction}
-              onValueChange={v => setLocal(prev => ({ ...prev, afterHoursAction: v }))}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="voicemail">Take voicemail</SelectItem>
-                <SelectItem value="forward">Forward to emergency number</SelectItem>
-                <SelectItem value="message">Play message & hang up</SelectItem>
-              </SelectContent>
-            </Select>
-            {local.afterHoursAction === "forward" && (
-              <div className="mt-2">
-                <Label>Emergency Number</Label>
-                <Input value={local.emergencyNumber}
-                  onChange={e => setLocal(prev => ({ ...prev, emergencyNumber: e.target.value }))}
-                  placeholder="+91..." className="mt-1" />
-              </div>
-            )}
+             <div className="space-y-2">
+                <Label className="text-xs">Emergency Number</Label>
+                <Input value={local.emergencyNumber} onChange={e => setLocal(prev => ({ ...prev, emergencyNumber: e.target.value }))} placeholder="+1..." className="h-9" />
+             </div>
+             <div className="space-y-2">
+                <Label className="text-xs">After Hours Action</Label>
+                <Select value={local.afterHoursAction} onValueChange={v => setLocal(prev => ({ ...prev, afterHoursAction: v }))}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="voicemail">Take Voicemail</SelectItem>
+                    <SelectItem value="forward">Forward to Emergency</SelectItem>
+                    <SelectItem value="hangup">Hang Up</SelectItem>
+                  </SelectContent>
+                </Select>
+             </div>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => onSave(local)}>Save Configuration</Button>
+          <Button onClick={() => onSave(local)}>Save Changes</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
 
 /* ─── Business Hours Dialog ─── */
 function BusinessHoursDialog({ open, onOpenChange, config, onSave }: {

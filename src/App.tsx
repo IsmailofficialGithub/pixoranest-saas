@@ -28,6 +28,7 @@ import InboundServicePage from "./pages/client/InboundServicePage";
 import InstallPage from "./pages/client/InstallPage";
 import ClientAnalyticsPage from "./pages/client/ClientAnalyticsPage";
 import ServiceCatalogPage from "./pages/client/ServiceCatalogPage";
+import EmailMarketingPage from "./pages/client/EmailMarketingPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -87,6 +88,7 @@ const App = () => (
               <Route path="voice-agent" element={<VoiceAgentPage />} />
               <Route path="whatsapp" element={<WhatsAppPage />} />
               <Route path="social-media" element={<SocialMediaPage />} />
+              <Route path="email-marketing" element={<EmailMarketingPage />} />
               <Route path="leads" element={<LeadsPage />} />
               <Route path="usage" element={<UsageBillingPage />} />
               <Route path="settings" element={<ClientSettingsPage />} />

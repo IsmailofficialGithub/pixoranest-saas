@@ -92,13 +92,14 @@ export default function WhatsAppPage() {
   const [campaignWizardOpen, setCampaignWizardOpen] = useState(false);
   const [analyticsData, setAnalyticsData] = useState<any[]>([]);
   const [statusDistribution, setStatusDistribution] = useState<any[]>([]);
+  const [workflowInstance, setWorkflowInstance] = useState<any>(null);
 
   const waService = assignedServices.find(s => s.service_slug === "whatsapp-automation");
 
   const fetchAll = useCallback(async () => {
     if (!client) return;
     setIsLoading(true);
-    await Promise.all([fetchStats(), fetchCampaigns(), fetchRecentMessages(), fetchAnalytics()]);
+    await Promise.all([fetchStats(), fetchCampaigns(), fetchRecentMessages(), fetchAnalytics(), fetchWorkflow()]);
     setIsLoading(false);
   }, [client]);
 
@@ -143,6 +144,17 @@ export default function WhatsAppPage() {
       .eq("client_id", client.id)
       .order("created_at", { ascending: false });
     setCampaigns((data as WACampaign[]) || []);
+  }
+
+  async function fetchWorkflow() {
+    if (!client) return;
+    const { data } = await supabase
+      .from("client_workflow_instances")
+      .select("*")
+      .eq("client_id", client.id)
+      .eq("service_slug", "whatsapp-automation")
+      .maybeSingle();
+    setWorkflowInstance(data);
   }
 
   async function fetchRecentMessages() {
@@ -244,7 +256,7 @@ export default function WhatsAppPage() {
         <div>
           <div className="flex items-center gap-2">
             <MessageCircle className="h-6 w-6" style={{ color: "#25D366" }} />
-            <h1 className="text-xl md:text-2xl font-bold text-foreground">WhatsApp Automation</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-foreground">LeadNest</h1>
           </div>
           <p className="text-sm text-muted-foreground mt-1">Send bulk messages and automate conversations</p>
         </div>
@@ -432,8 +444,24 @@ export default function WhatsAppPage() {
       </div>
 
       {/* Modals */}
-      <SendMessageModal open={sendModalOpen} onOpenChange={setSendModalOpen} clientId={client?.id || ""} onSent={() => { fetchRecentMessages(); fetchStats(); }} />
-      <CreateCampaignWizardWA open={campaignWizardOpen} onOpenChange={setCampaignWizardOpen} clientId={client?.id || ""} usageLimit={waService.usage_limit} usageConsumed={waService.usage_consumed} onCreated={() => { fetchCampaigns(); fetchStats(); }} />
+      <SendMessageModal 
+        open={sendModalOpen} 
+        onOpenChange={setSendModalOpen} 
+        clientId={client?.id || ""} 
+        onSent={() => { fetchRecentMessages(); fetchStats(); }} 
+        webhookUrl={workflowInstance?.webhook_url}
+        workflowInstanceId={workflowInstance?.id}
+      />
+      <CreateCampaignWizardWA 
+        open={campaignWizardOpen} 
+        onOpenChange={setCampaignWizardOpen} 
+        clientId={client?.id || ""} 
+        usageLimit={waService.usage_limit} 
+        usageConsumed={waService.usage_consumed} 
+        onCreated={() => { fetchCampaigns(); fetchStats(); }}
+        webhookUrl={workflowInstance?.webhook_url}
+        workflowInstanceId={workflowInstance?.id}
+      />
     </div>
   );
 }
@@ -557,7 +585,14 @@ function maskPhone(phone: string): string {
 }
 
 /* ─── Send Message Modal ─── */
-function SendMessageModal({ open, onOpenChange, clientId, onSent }: { open: boolean; onOpenChange: (v: boolean) => void; clientId: string; onSent: () => void }) {
+function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, workflowInstanceId }: { 
+  open: boolean; 
+  onOpenChange: (v: boolean) => void; 
+  clientId: string; 
+  onSent: () => void;
+  webhookUrl?: string;
+  workflowInstanceId?: string;
+}) {
   const { toast } = useToast();
   const [phone, setPhone] = useState("");
   const [messageType, setMessageType] = useState("text");
@@ -581,6 +616,29 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent }: { open: bool
       template_name: messageType === "template" ? templateName : null,
       status: "queued",
     });
+
+    
+    // Also trigger the webhook if available to actually "work with API"
+    if (!error && webhookUrl) {
+      try {
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: clientId,
+            campaign_id: null,
+            workflow_instance_id: workflowInstanceId,
+            message_type: messageType,
+            message_content: content.trim(),
+            template_name: messageType === "template" ? templateName : null,
+            contacts: [{ phone: phone.trim() }]
+          }),
+        });
+      } catch (e) {
+        console.error("Webhook trigger failed:", e);
+      }
+    }
+
     setSending(false);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -649,9 +707,11 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent }: { open: bool
 }
 
 /* ─── Campaign Wizard ─── */
-function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usageConsumed, onCreated }: {
+function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usageConsumed, onCreated, webhookUrl, workflowInstanceId }: {
   open: boolean; onOpenChange: (v: boolean) => void; clientId: string;
   usageLimit: number; usageConsumed: number; onCreated: () => void;
+  webhookUrl?: string;
+  workflowInstanceId?: string;
 }) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
@@ -722,6 +782,27 @@ function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usag
     // Batch insert in chunks
     for (let i = 0; i < messages.length; i += 100) {
       await supabase.from("whatsapp_messages").insert(messages.slice(i, i + 100));
+    }
+
+    // Trigger the webhook if available
+    if (webhookUrl) {
+      try {
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: clientId,
+            campaign_id: data.id,
+            campaign_name: name.trim(),
+            workflow_instance_id: workflowInstanceId,
+            message_type: "text",
+            message_content: messageContent.trim(),
+            contacts: contacts.map(c => ({ phone: c.phone, name: c.name || "" }))
+          }),
+        });
+      } catch (e) {
+        console.error("Campaign webhook trigger failed:", e);
+      }
     }
 
     setCreating(false);
