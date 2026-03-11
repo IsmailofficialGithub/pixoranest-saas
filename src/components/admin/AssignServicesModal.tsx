@@ -92,7 +92,7 @@ export default function AssignServicesModal({ open, onOpenChange, clientId, clie
     queryKey: ["assign-services", clientId],
     queryFn: async () => {
       const [servicesRes, pricingRes, plansRes, assignedRes] = await Promise.all([
-        supabase.from("services").select("*").eq("is_active", true).order("category").order("name"),
+        supabase.from("services").select("*").eq("is_active", true).neq("slug", "ai-voice-receptionist").neq("slug", "voice-receptionist").order("category").order("name"),
         supabase.from("admin_pricing").select("service_id, custom_price_per_unit, markup_percentage"),
         supabase.from("service_plans").select("*").eq("is_active", true),
         supabase.from("client_services").select("service_id, plan_id, usage_limit, usage_consumed, reset_period, is_active").eq("client_id", clientId),

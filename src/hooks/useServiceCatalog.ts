@@ -58,7 +58,7 @@ export function useServiceCatalog() {
       { data: plans },
       { data: requests },
     ] = await Promise.all([
-      supabase.from("services").select("id, name, slug, icon_url, description, category, features").eq("is_active", true).order("name"),
+      supabase.from("services").select("id, name, slug, icon_url, description, category, features").eq("is_active", true).neq("slug", "ai-voice-receptionist").neq("slug", "voice-receptionist").order("name"),
       supabase.from("client_services").select("service_id, is_active, usage_limit, usage_consumed, reset_period, plan_id").eq("client_id", client.id),
       supabase.from("service_plans").select("id, plan_name, plan_tier, price_per_unit, monthly_price, usage_limit, features_included, is_active, service_id").eq("is_active", true),
       supabase.from("service_purchase_requests").select("id, service_id, status, created_at").eq("client_id", client.id).in("status", ["pending"]),

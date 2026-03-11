@@ -284,7 +284,7 @@ export default function VoiceReceptionistPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">Call Orbitor</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">AI Voice Receptionist</h1>
           <p className="text-sm text-muted-foreground">Manage your inbound calls with AI</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">

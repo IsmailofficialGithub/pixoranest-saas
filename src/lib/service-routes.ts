@@ -34,7 +34,7 @@ export const SERVICE_ICON_MAP: Record<string, React.ElementType> = {
 
 export const SERVICE_LABEL_MAP: Record<string, string> = {
   "voice-telecaller": "Call Orbitor",
-  "voice-receptionist": "Call Orbitor",
+  "voice-receptionist": "AI Voice Receptionist",
   "voice-agent": "EcoAssist",
   "whatsapp": "LeadNest",
   "social-media": "Socialium",

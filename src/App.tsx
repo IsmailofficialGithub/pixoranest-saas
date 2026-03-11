@@ -83,7 +83,7 @@ const App = () => (
               <Route path="voice-telecaller" element={<VoiceTelecallerPage />} />
               <Route path="voice-telecaller/calls" element={<CallLogsPage />} />
               <Route path="voice-telecaller/campaigns/:campaignId" element={<CampaignDetailPage />} />
-              <Route path="voice-receptionist" element={<VoiceReceptionistPage />} />
+              <Route path="voice-receptionist" element={<NotFound />} />
               <Route path="inbound" element={<InboundServicePage />} />
               <Route path="voice-agent" element={<VoiceAgentPage />} />
               <Route path="whatsapp" element={<WhatsAppPage />} />

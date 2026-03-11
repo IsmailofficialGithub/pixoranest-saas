@@ -109,6 +109,8 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       const { data: servicesData } = await supabase
         .from("services")
         .select("id, name, slug, category, icon_url")
+        .neq("slug", "ai-voice-receptionist")
+        .neq("slug", "voice-receptionist")
         .in("id", serviceIds);
 
       const serviceMap = new Map(servicesData?.map(s => [s.id, s]) || []);

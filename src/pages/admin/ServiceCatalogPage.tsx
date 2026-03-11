@@ -93,7 +93,7 @@ export default function ServiceCatalogPage() {
   async function fetchData() {
     setIsLoading(true);
     const [servicesRes, pricingRes] = await Promise.all([
-      supabase.from("services").select("*").eq("is_active", true).order("category").order("name"),
+      supabase.from("services").select("*").eq("is_active", true).neq("slug", "ai-voice-receptionist").neq("slug", "voice-receptionist").order("category").order("name"),
       supabase.from("admin_pricing").select("*").eq("admin_id", admin!.id),
     ]);
 

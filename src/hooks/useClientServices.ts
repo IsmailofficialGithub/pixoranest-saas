@@ -27,6 +27,8 @@ export function useClientServices() {
       .from("services")
       .select("id, name, slug, icon_url, description, category")
       .eq("is_active", true)
+      .neq("slug", "ai-voice-receptionist")
+      .neq("slug", "voice-receptionist")
       .order("name");
 
     // Get client's subscribed services

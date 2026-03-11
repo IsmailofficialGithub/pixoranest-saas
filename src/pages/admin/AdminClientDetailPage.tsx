@@ -161,7 +161,7 @@ export default function AdminClientDetailPage() {
     if (!clientId) return;
     const { data } = await supabase
       .from("client_services")
-      .select("*, services(name, category, base_pricing_model), service_plans(plan_name)")
+      .select("*, services(name, category, base_pricing_model, slug), service_plans(plan_name)")
       .eq("client_id", clientId)
       .order("assigned_at", { ascending: false });
 
@@ -173,7 +173,9 @@ export default function AdminClientDetailPage() {
     const priceMap = new Map(pricing?.map((p) => [p.service_id, p.custom_price_per_unit]) || []);
 
     setServices(
-      (data ?? []).map((d: any) => ({
+      (data ?? [])
+        .filter((d: any) => d.services?.slug !== "ai-voice-receptionist" && d.services?.slug !== "voice-receptionist")
+        .map((d: any) => ({
         id: d.id,
         service_id: d.service_id,
         service_name: d.services?.name ?? "Unknown",
