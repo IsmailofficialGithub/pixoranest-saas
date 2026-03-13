@@ -29,6 +29,7 @@ import {
 import DashboardWidgets from "@/components/admin/DashboardWidgets";
 import { useAdminServices } from "@/hooks/useAdminServices";
 import { SERVICE_ROUTE_MAP } from "@/lib/service-routes";
+import { motion } from "framer-motion";
 import ClientFormModal from "@/components/admin/ClientFormModal";
 
 interface DashboardStats {
@@ -273,19 +274,27 @@ export default function AdminDashboardHome() {
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="text-xl md:text-2xl font-bold text-foreground truncate">
-            Welcome back, {profile?.full_name || profile?.email}!
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col md:flex-row items-center justify-between gap-6 p-8 rounded-3xl bg-gradient-to-br from-primary/10 via-white to-accent/10 border border-primary/20 shadow-sm relative overflow-hidden group mb-8"
+      >
+        <div className="absolute top-0 right-0 p-8 opacity-[0.05] group-hover:opacity-[0.08] transition-opacity pointer-events-none">
+          <TrendingUp className="w-48 h-48 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0 z-10 text-center md:text-left">
+          <h1 className="text-3xl md:text-4xl font-black text-slate-900 mb-2 tracking-tight">
+            Welcome back, {profile?.full_name?.split(' ')[0] || 'Admin'}!
           </h1>
-          <p className="text-xs md:text-sm text-muted-foreground">
-            {admin?.company_name} Dashboard
+          <p className="text-slate-500 font-medium">
+            Manage your network and monitor service performance.
           </p>
         </div>
-        <p className="text-sm text-muted-foreground hidden sm:block shrink-0">
-          {format(new Date(), "EEEE, MMMM d, yyyy")}
-        </p>
-      </div>
+        <div className="shrink-0 text-right z-10 hidden sm:block">
+          <p className="text-4xl font-black text-primary tabular-nums">{format(new Date(), "HH:mm")}</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">{format(new Date(), "EEEE, MMMM d")}</p>
+        </div>
+      </motion.div>
 
       {/* Pending Alerts */}
       {hasAlerts && (
@@ -341,27 +350,27 @@ export default function AdminDashboardHome() {
       </div>
 
       {/* Quick Actions */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Quick Actions</CardTitle>
+      <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)]">
+        <CardHeader className="pb-3 border-b border-sidebar-border/5">
+          <CardTitle className="text-lg font-bold text-slate-800">Quick Actions</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <div className="flex gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible">
-            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0" onClick={() => navigate("/admin/clients")}>
-              <UserPlus className="h-5 w-5 text-muted-foreground" />
-              <span className="text-xs">Add New Client</span>
+            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0 border-slate-200 hover:border-primary/50 hover:bg-primary/5 transition-all" onClick={() => navigate("/admin/clients")}>
+              <UserPlus className="h-5 w-5 text-primary" />
+              <span className="text-xs font-bold text-slate-600">Add New Client</span>
             </Button>
-            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0" onClick={() => navigate("/admin/services")}>
-              <Package className="h-5 w-5 text-muted-foreground" />
-              <span className="text-xs">View Service Catalog</span>
+            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0 border-slate-200 hover:border-primary/50 hover:bg-primary/5 transition-all" onClick={() => navigate("/admin/services")}>
+              <Package className="h-5 w-5 text-primary" />
+              <span className="text-xs font-bold text-slate-600">View Service Catalog</span>
             </Button>
-            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0" onClick={() => navigate("/admin/pricing")}>
-              <DollarSign className="h-5 w-5 text-muted-foreground" />
-              <span className="text-xs">Manage Pricing</span>
+            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0 border-slate-200 hover:border-primary/50 hover:bg-primary/5 transition-all" onClick={() => navigate("/admin/pricing")}>
+              <DollarSign className="h-5 w-5 text-primary" />
+              <span className="text-xs font-bold text-slate-600">Manage Pricing</span>
             </Button>
-            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0" onClick={() => navigate("/admin/billing")}>
-              <FileText className="h-5 w-5 text-muted-foreground" />
-              <span className="text-xs">Generate Invoice</span>
+            <Button variant="outline" className="h-auto py-4 flex-col gap-2 min-w-[120px] shrink-0 md:min-w-0 border-slate-200 hover:border-primary/50 hover:bg-primary/5 transition-all" onClick={() => navigate("/admin/billing")}>
+              <FileText className="h-5 w-5 text-primary" />
+              <span className="text-xs font-bold text-slate-600">Generate Invoice</span>
             </Button>
           </div>
         </CardContent>
@@ -373,11 +382,11 @@ export default function AdminDashboardHome() {
       {/* Charts Row */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         {/* Service Usage Chart */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Service Usage This Month</CardTitle>
+        <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] hover:shadow-[0_12px_30px_-10px_rgba(48,79,159,0.2)] hover:border-primary/50 transition-all">
+          <CardHeader className="pb-2 border-b border-sidebar-border/5">
+            <CardTitle className="text-lg font-bold text-slate-800">Service Usage This Month</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {serviceUsage.length > 0 ? (
               <ChartContainer config={chartConfig} className="h-[250px] w-full">
                 <BarChart data={serviceUsage} layout="vertical" margin={{ left: 20, right: 30 }}>
@@ -394,11 +403,11 @@ export default function AdminDashboardHome() {
         </Card>
 
         {/* Revenue Trend Chart */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Revenue Trend (Last 30 Days)</CardTitle>
+        <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] hover:shadow-[0_12px_30px_-10px_rgba(48,79,159,0.2)] hover:border-primary/50 transition-all">
+          <CardHeader className="pb-2 border-b border-sidebar-border/5">
+            <CardTitle className="text-lg font-bold text-slate-800">Revenue Trend (Last 30 Days)</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <ChartContainer config={chartConfig} className="h-[250px] w-full">
               <AreaChart data={revenueTrend} margin={{ left: 10, right: 10 }}>
                 <defs>
@@ -435,14 +444,14 @@ export default function AdminDashboardHome() {
       <DashboardWidgets />
 
       {/* Recent Clients - Table on desktop, Cards on mobile */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-lg">Recent Clients</CardTitle>
-          <Button variant="ghost" size="sm" onClick={() => navigate("/admin/clients")}>
+      <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-sidebar-border/5">
+          <CardTitle className="text-lg font-bold text-slate-800">Recent Clients</CardTitle>
+          <Button variant="ghost" size="sm" className="text-primary font-bold" onClick={() => navigate("/admin/clients")}>
             View All <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {recentClients.length > 0 ? (
             <>
               {/* Mobile: Card layout */}
@@ -674,24 +683,24 @@ function StatsCard({
   trend?: number;
 }) {
   return (
-    <Card>
+    <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] hover:shadow-[0_12px_30px_-10px_rgba(48,79,159,0.2)] hover:border-primary/50 transition-all group overflow-hidden relative">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-        <div className="rounded-md p-2" style={{ backgroundColor: `${iconColor}15`, color: iconColor }}>
+        <CardTitle className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</CardTitle>
+        <div className="rounded-xl p-2 bg-sidebar/5 transition-colors group-hover:bg-primary/10" style={{ color: iconColor }}>
           {icon}
         </div>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-bold">{value}</p>
+        <p className="text-2xl font-black text-slate-900 tracking-tight">{value}</p>
         <div className="flex items-center justify-between mt-1">
-          <p className="text-xs text-muted-foreground">{subtext}</p>
+          <p className="text-[10px] text-slate-500 font-medium italic">{subtext}</p>
           {trend !== undefined && (
-            <span className={`text-xs font-medium ${trend >= 0 ? "text-green-600" : "text-red-600"}`}>
+            <span className={`text-[10px] font-bold ${trend >= 0 ? "text-green-600" : "text-red-600"}`}>
               {trend >= 0 ? "+" : ""}{trend}%
             </span>
           )}
           {linkText && onLinkClick && (
-            <button onClick={onLinkClick} className="text-xs font-medium text-primary hover:underline">
+            <button onClick={onLinkClick} className="text-[10px] font-bold text-primary hover:underline uppercase tracking-wider">
               {linkText}
             </button>
           )}

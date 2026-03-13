@@ -1,4 +1,4 @@
-import { Menu } from "lucide-react";
+import { Menu, Sparkles, LogOut, Settings, User, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +13,7 @@ import { useClient } from "@/contexts/ClientContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
 import ClientNotificationsDropdown from "./ClientNotificationsDropdown";
+import { motion } from "framer-motion";
 
 export default function ClientHeader({ onMenuClick }: { onMenuClick: () => void }) {
   const { profile, logout } = useAuth();
@@ -50,55 +51,43 @@ export default function ClientHeader({ onMenuClick }: { onMenuClick: () => void 
   };
 
   return (
-    <header className="fixed top-0 right-0 left-0 md:left-60 z-30 flex h-14 md:h-16 items-center justify-between border-b bg-card px-3 md:px-6 safe-area-top">
-      {/* Left: hamburger on mobile */}
-      <Button variant="ghost" size="icon" className="md:hidden h-10 w-10" onClick={onMenuClick}>
-        <Menu className="h-5 w-5" />
-      </Button>
+    <header className="fixed top-0 right-0 left-0 md:left-64 z-30 flex h-16 md:h-16 items-center justify-between border-b border-white/5 bg-sidebar backdrop-blur-xl px-4 md:px-8 safe-area-top shadow-sm shadow-black/20">
+      {/* Left: hamburger on mobile and page title */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" className="md:hidden h-10 w-10 text-white" onClick={onMenuClick}>
+          <Menu className="h-6 w-6" />
+        </Button>
+        <motion.span
+          key={getPageTitle()}
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="text-lg font-bold text-white tracking-tight"
+        >
+          {getPageTitle()}
+        </motion.span>
+      </div>
 
-      {/* Center: page title */}
-      <span className="md:hidden text-sm font-semibold text-foreground truncate max-w-[140px]">
-        {getPageTitle()}
-      </span>
-      <span className="hidden md:block text-sm font-semibold text-foreground">
-        {getPageTitle()}
-      </span>
+      <div className="flex items-center gap-2 md:gap-4">
 
-      {/* Right */}
-      <div className="flex items-center gap-2 md:gap-3">
-        {/* Usage indicator */}
+        {/* Usage indicator (Table/Desktop only) */}
         {totalLimit > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="hidden md:flex items-center gap-2 h-9">
-                <div className="w-20">
-                  <Progress value={usagePercent} className="h-2" />
-                </div>
-                <span className="text-xs text-muted-foreground">{usagePercent}%</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel>Usage Overview</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {assignedServices.map((svc) => {
-                const pct = svc.usage_limit > 0 ? Math.round((svc.usage_consumed / svc.usage_limit) * 100) : 0;
-                return (
-                  <div key={svc.id} className="px-2 py-1.5">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="font-medium">{svc.service_name}</span>
-                      <span className="text-muted-foreground">{svc.usage_consumed}/{svc.usage_limit}</span>
-                    </div>
-                    <Progress value={pct} className="h-1.5" />
-                  </div>
-                );
-              })}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/client/usage")}>
-                View Full Details
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="hidden lg:flex items-center gap-3">
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-[10px] font-semibold text-slate-200 uppercase tracking-widest">Usage</span>
+              <div className="w-24 md:w-32 bg-white/10 rounded-full overflow-hidden h-1.5 border border-white/10">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${usagePercent}%` }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                  className="h-full bg-gradient-to-r from-primary to-orange-400"
+                />
+              </div>
+            </div>
+            <span className="text-xs font-bold text-white bg-white/10 px-2 py-0.5 rounded-md border border-white/10">{usagePercent}%</span>
+          </div>
         )}
+
+        <div className="h-6 w-[1px] bg-white/10 mx-1 hidden md:block" />
 
         {/* Notifications */}
         <ClientNotificationsDropdown />
@@ -108,30 +97,39 @@ export default function ClientHeader({ onMenuClick }: { onMenuClick: () => void 
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="relative h-9 w-9 rounded-full text-white text-sm font-semibold hover:opacity-90"
-              style={{ backgroundColor: primaryColor }}
+              className="relative h-10 w-10 md:h-11 md:w-11 rounded-xl text-white text-sm font-bold shadow-lg shadow-primary/20 overflow-hidden group transition-all"
             >
-              {initials}
+              <div 
+                className="absolute inset-0 opacity-80 group-hover:opacity-100 transition-opacity" 
+                style={{ backgroundColor: primaryColor || "#304f9f" }} 
+              />
+              <span className="relative z-10">{initials}</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="font-normal">
-              <p className="text-sm font-medium">{profile?.full_name ?? "Client"}</p>
-              <p className="text-xs text-muted-foreground">{client?.company_name}</p>
+          <DropdownMenuContent align="end" className="w-64 bg-sidebar border-white/10 text-slate-100 mt-2 shadow-2xl">
+            <DropdownMenuLabel className="font-normal py-3 bg-white/5">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-bold text-white">{profile?.full_name ?? "Client"}</p>
+                <p className="text-xs text-slate-400">{client?.company_name}</p>
+              </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => navigate("/client/settings")}>
-              My Profile
+            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuItem onClick={() => navigate("/client/settings")} className="gap-2 py-2.5 hover:bg-white/5">
+              <User className="h-4 w-4 text-primary" />
+              <span>My Profile</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate("/client/usage")}>
-              Usage & Billing
+            <DropdownMenuItem onClick={() => navigate("/client/usage")} className="gap-2 py-2.5 hover:bg-white/5">
+              <CreditCard className="h-4 w-4 text-primary" />
+              <span>Usage & Billing</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate("/client/settings")}>
-              Settings
+            <DropdownMenuItem onClick={() => navigate("/client/settings")} className="gap-2 py-2.5 hover:bg-white/5">
+              <Settings className="h-4 w-4 text-primary" />
+              <span>Settings</span>
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-              Logout
+            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuItem onClick={handleLogout} className="text-red-400 focus:text-red-400 gap-2 py-2.5 hover:bg-red-500/10">
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -139,3 +137,4 @@ export default function ClientHeader({ onMenuClick }: { onMenuClick: () => void 
     </header>
   );
 }
+

@@ -7,7 +7,7 @@ export default function SuperAdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-muted/40">
+    <div className="min-h-screen bg-mesh text-foreground">
       <SuperAdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <SuperAdminHeader onMenuClick={() => setSidebarOpen(true)} />
 

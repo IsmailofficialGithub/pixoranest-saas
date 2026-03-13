@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { Zap, LayoutDashboard, Layers, Users, Briefcase, Workflow, BarChart, Settings, X, Bot, List, PhoneCall, PhoneIncoming } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -42,23 +43,32 @@ export default function SuperAdminSidebar({ open, onClose }: SuperAdminSidebarPr
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-60 flex-col bg-card shadow-sm transition-transform duration-300 ease-in-out",
-          "md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-60 flex-col bg-sidebar border-r border-sidebar-border transition-transform duration-300 md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Brand */}
-        <div className="flex items-center justify-between px-5 py-5 border-b">
-          <Link to="/super-admin" className="flex items-center gap-2">
-            <img src="/logo.png" alt="Pixoranest" className="h-8 w-auto" />
-          </Link>
-          <button onClick={onClose} className="md:hidden p-1 rounded hover:bg-muted">
-            <X className="h-5 w-5 text-muted-foreground" />
+        {/* Brand header */}
+        <div className="flex items-center justify-between px-6 py-6 border-b border-white/5 min-h-[80px]">
+          <div className="flex items-center gap-3 min-w-0">
+            <motion.div 
+              whileHover={{ rotate: 10, scale: 1.1 }}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-foreground shadow-lg shadow-black/20 shrink-0 border border-white/10"
+            >
+              <Zap className="h-6 w-6 text-white" />
+            </motion.div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xl font-black text-white tracking-tighter leading-none">PIXORA</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1 leading-none">SUPER NEST</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="md:hidden p-2 rounded-full hover:bg-white/10 transition-colors">
+            <X className="h-5 w-5 text-white" />
           </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1 custom-scrollbar">
           {navItems.map((item) => {
             const active = isActive(item.path);
             return (
@@ -68,14 +78,17 @@ export default function SuperAdminSidebar({ open, onClose }: SuperAdminSidebarPr
                 end={item.path === "/super-admin"}
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-4 py-3 text-sm font-medium transition-colors",
+                  "group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
                   active
-                    ? "bg-blue-500 text-white"
-                    : "text-muted-foreground hover:bg-blue-50 hover:text-foreground"
+                    ? "bg-primary text-white shadow-lg shadow-primary/10"
+                    : "text-slate-200 hover:text-white hover:bg-white/5"
                 )}
               >
-                <item.icon className="h-4 w-4 shrink-0" />
-                <span>{item.title}</span>
+                <item.icon className={cn(
+                  "h-5 w-5 shrink-0 transition-transform group-hover:scale-110",
+                  active ? "text-white" : "text-slate-300 group-hover:text-white"
+                )} />
+                <span className="truncate">{item.title}</span>
               </NavLink>
             );
           })}

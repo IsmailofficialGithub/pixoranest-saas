@@ -36,27 +36,27 @@ export default function AdminHeader({ onMenuClick, onMessagesClick, unreadMessag
   };
 
   return (
-    <header className="fixed top-0 right-0 left-0 md:left-60 z-30 flex h-14 md:h-16 items-center justify-between border-b bg-card px-3 md:px-6 safe-area-top">
+    <header className="fixed top-0 right-0 left-0 md:left-60 z-30 flex h-14 md:h-16 items-center justify-between border-b border-white/5 bg-sidebar backdrop-blur-xl px-3 md:px-6 safe-area-top shadow-sm shadow-black/20">
       {/* Left: hamburger on mobile */}
-      <Button variant="ghost" size="icon" className="md:hidden h-10 w-10" onClick={onMenuClick}>
+      <Button variant="ghost" size="icon" className="md:hidden h-10 w-10 text-white" onClick={onMenuClick}>
         <Menu className="h-5 w-5" />
       </Button>
 
       {/* Center: company name on mobile, search on desktop */}
-      <span className="md:hidden text-sm font-semibold text-foreground truncate max-w-[140px]">
+      <span className="md:hidden text-sm font-semibold text-white truncate max-w-[140px]">
         {admin?.company_name || "Admin"}
       </span>
       <div className="hidden md:block relative w-full max-w-[350px] mx-4">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <Input
           placeholder="Search clients..."
-          className="pl-9 bg-muted/50 border-0 focus-visible:ring-1"
+          className="pl-9 bg-white/10 border-0 text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-white/20"
         />
       </div>
 
       {/* Right */}
       <div className="flex items-center gap-1 md:gap-3">
-        <Button variant="ghost" size="icon" className="relative h-10 w-10" onClick={onMessagesClick}>
+        <Button variant="ghost" size="icon" className="relative h-10 w-10 text-white hover:bg-white/10" onClick={onMessagesClick}>
           <MessageSquare className="h-5 w-5" />
           {unreadMessages > 0 && (
             <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">

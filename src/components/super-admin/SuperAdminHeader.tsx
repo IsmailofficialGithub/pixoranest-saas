@@ -31,19 +31,19 @@ export default function SuperAdminHeader({ onMenuClick }: SuperAdminHeaderProps)
   };
 
   return (
-    <header className="fixed top-0 right-0 left-0 md:left-60 z-30 flex h-16 items-center justify-between border-b bg-card px-4 md:px-6">
+    <header className="fixed top-0 right-0 left-0 md:left-60 z-30 flex h-16 items-center justify-between border-b border-white/5 bg-sidebar backdrop-blur-xl px-4 md:px-6 shadow-sm shadow-black/20">
       {/* Left: hamburger on mobile */}
-      <Button variant="ghost" size="icon" className="md:hidden" onClick={onMenuClick}>
+      <Button variant="ghost" size="icon" className="md:hidden text-white" onClick={onMenuClick}>
         <Menu className="h-5 w-5" />
       </Button>
       <div className="hidden md:block" />
 
       {/* Center: search */}
       <div className="relative w-full max-w-[400px] mx-4">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <Input
           placeholder="Search..."
-          className="pl-9 bg-muted/50 border-0 focus-visible:ring-1"
+          className="pl-9 bg-white/10 border-0 text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-white/20"
         />
       </div>
 

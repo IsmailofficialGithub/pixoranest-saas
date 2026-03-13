@@ -21,6 +21,7 @@ import {
   CardHeader, 
   CardTitle 
 } from "@/components/ui/card";
+import { motion } from "framer-motion";
 
 const Index = () => {
   const { session, profile, loading } = useAuth();
@@ -29,8 +30,8 @@ const Index = () => {
     {
       title: "AI Voice Telecaller",
       description: "Automate outbound calls with natural-sounding AI and reach thousands of leads instantly, multiplying your sales force without the overhead.",
-      icon: <Phone className="h-6 w-6 text-blue-500" />,
-      color: "from-blue-500/20 to-transparent",
+      icon: <Phone className="h-6 w-6 text-primary" />,
+      color: "from-primary/20 to-transparent",
     },
     {
       title: "AI Voice Receptionist",
@@ -64,12 +65,41 @@ const Index = () => {
     },
   ];
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 }
+  };
+
   return (
-    <div className="flex min-h-screen flex-col bg-slate-950 font-sans text-slate-50 selection:bg-indigo-500/30 overflow-hidden">
+    <div className="flex min-h-screen flex-col bg-slate-950 font-sans text-slate-50 selection:bg-primary/30 overflow-hidden">
       {/* Dynamic Background */}
       <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] h-[40%] w-[40%] rounded-full bg-indigo-600/20 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-blue-600/20 blur-[120px]" />
+        <motion.div 
+          animate={{
+            scale: [1, 1.1, 1],
+            opacity: [0.2, 0.3, 0.2],
+          }}
+          transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-[-10%] left-[-10%] h-[40%] w-[40%] rounded-full bg-primary/20 blur-[120px]" 
+        />
+        <motion.div 
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.1, 0.2, 0.1],
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-blue-600/20 blur-[120px]" 
+        />
         <div className="absolute top-[40%] left-[60%] h-[30%] w-[30%] rounded-full bg-purple-600/10 blur-[100px]" />
         
         {/* Subtle grid pattern overlay */}
@@ -80,19 +110,22 @@ const Index = () => {
       <header className="relative z-50 w-full border-b border-white/5 bg-slate-950/50 backdrop-blur-xl">
         <div className="container mx-auto flex h-20 items-center justify-between px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg shadow-indigo-500/20">
+            <motion.div 
+              whileHover={{ rotate: 10, scale: 1.1 }}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-blue-600 shadow-lg shadow-primary/20"
+            >
              <img src="/logo.png" alt="Logo" className="h-10 w-10" />
-            </div>
+            </motion.div>
             <span className="text-xl font-bold tracking-tight text-white">Pixoranest</span>
           </Link>
           <nav className="flex items-center gap-4">
             {loading ? (
               <Button variant="ghost" disabled size="sm" className="w-24 bg-white/5 text-slate-300">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               </Button>
             ) : session ? (
               <Link to={getRedirectPath(profile?.role || "client")}>
-                <Button size="sm" className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 rounded-full px-6">
+                <Button size="sm" className="gap-2 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 rounded-full px-6">
                   Dashboard <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
@@ -117,26 +150,46 @@ const Index = () => {
       <main className="relative z-10 flex-1">
         {/* Hero Section */}
         <section className="relative px-6 py-32 lg:px-8 lg:py-40 flex flex-col items-center text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-4 py-1.5 text-sm font-medium text-indigo-300 mb-8 backdrop-blur-md shadow-[0_0_20px_rgba(99,102,241,0.15)] transition-all hover:bg-indigo-500/20 cursor-default">
-            <Sparkles className="h-4 w-4 text-indigo-400" />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5 }}
+            className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary-foreground mb-8 backdrop-blur-md shadow-[0_0_20px_rgba(48,79,159,0.15)] transition-all hover:bg-primary/20 cursor-default"
+          >
+            <Sparkles className="h-4 w-4 text-primary" />
             <span>Next-Gen AI Automation Platform</span>
-          </div>
+          </motion.div>
           
-          <h1 className="mx-auto max-w-5xl text-5xl font-extrabold tracking-tight sm:text-7xl lg:text-8xl text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 drop-shadow-sm pb-2">
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.2 }}
+            className="mx-auto max-w-5xl text-5xl font-extrabold tracking-tight sm:text-7xl lg:text-8xl text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 drop-shadow-sm pb-2"
+          >
             Scale Your Communications <br className="hidden md:block"/>
-            <span className="bg-gradient-to-r from-indigo-400 via-blue-500 to-purple-500 bg-clip-text text-transparent filter drop-shadow-[0_0_30px_rgba(99,102,241,0.3)]">with AI</span>
-          </h1>
+            <span className="bg-gradient-to-r from-primary via-blue-400 to-indigo-500 bg-clip-text text-transparent filter drop-shadow-[0_0_30px_rgba(48,79,159,0.3)]">with AI</span>
+          </motion.h1>
           
-          <p className="mx-auto mt-8 max-w-2xl text-lg sm:text-xl text-slate-400 leading-relaxed font-light">
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.4 }}
+            className="mx-auto mt-8 max-w-2xl text-lg sm:text-xl text-slate-400 leading-relaxed font-light"
+          >
             The all-in-one multi-tenant SaaS for white-labeled AI Voice, WhatsApp, and Social Media automation. Transform how your business connects globally.
-          </p>
+          </motion.p>
           
-          <div className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row w-full max-w-md mx-auto sm:max-w-none">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.6 }}
+            className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row w-full max-w-md mx-auto sm:max-w-none"
+          >
             {loading ? (
               <Button size="lg" disabled className="h-14 w-48 rounded-full bg-white/10">Loading...</Button>
             ) : session ? (
               <Link to={getRedirectPath(profile?.role || "client")}>
-                <Button size="lg" className="h-14 px-8 gap-3 text-lg rounded-full bg-indigo-600 hover:bg-indigo-500 w-full sm:w-auto shadow-[0_0_40px_-10px_rgba(99,102,241,0.5)] transition-all hover:scale-105">
+                <Button size="lg" className="h-14 px-8 gap-3 text-lg rounded-full bg-primary hover:bg-primary/90 w-full sm:w-auto shadow-[0_0_40px_-10px_rgba(48,79,159,0.5)] transition-all hover:scale-105">
                   Launch Dashboard <ArrowRight className="h-5 w-5" />
                 </Button>
               </Link>
@@ -148,16 +201,21 @@ const Index = () => {
                   </Button>
                 </Link>
                 <div className="w-full sm:w-auto mt-4 sm:mt-0">
-                  <Button variant="outline" size="lg" className="h-14 px-8 text-lg rounded-full border-white/20 hover:bg-white/5 text-black hover:text-white w-full sm:w-auto backdrop-blur-sm transition-all hover:border-white/40">
+                  <Button variant="outline" size="lg" className="h-14 px-8 text-lg rounded-full border-white/20 hover:bg-white/5 text-slate-200 hover:text-white w-full sm:w-auto backdrop-blur-sm transition-all hover:border-white/40">
                     Book a Demo
                   </Button>
                 </div>
               </>
             )}
-          </div>
+          </motion.div>
           
-          {/* Trusted By - Styled beautifully */}
-          <div className="mt-24 w-full max-w-4xl mx-auto border-t border-white/10 pt-10">
+          {/* Trusted By */}
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1, delay: 1 }}
+            className="mt-24 w-full max-w-4xl mx-auto border-t border-white/10 pt-10"
+          >
             <p className="text-sm font-medium text-slate-500 tracking-widest uppercase mb-8">Integrated with industry leaders</p>
             <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-8 opacity-60">
               {['Exotel', 'Meta', 'Twilio', 'Retell AI', 'ElevenLabs'].map((brand, i) => (
@@ -166,7 +224,7 @@ const Index = () => {
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
         </section>
 
         {/* Features Section */}
@@ -177,9 +235,20 @@ const Index = () => {
               <p className="mt-6 text-lg text-slate-400 font-light">Comprehensive suite of autonomous AI services effortlessly managed under one unified, beautiful roof.</p>
             </div>
             
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <motion.div 
+              variants={containerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+            >
               {features.map((feature, index) => (
-                <div key={index} className="group relative rounded-3xl border border-white/5 bg-white/[0.02] p-8 hover:bg-white/[0.04] transition-all duration-500 overflow-hidden hover:-translate-y-1">
+                <motion.div 
+                  key={index} 
+                  variants={itemVariants}
+                  whileHover={{ y: -5 }}
+                  className="group relative rounded-3xl border border-white/5 bg-white/[0.02] p-8 hover:bg-white/[0.04] transition-all duration-500 overflow-hidden"
+                >
                   {/* Subtle glowing background orb inside the card */}
                   <div className={`absolute -top-24 -right-24 h-48 w-48 rounded-full bg-gradient-to-br ${feature.color} opacity-0 group-hover:opacity-100 blur-3xl transition-opacity duration-700 pointer-events-none`} />
                   
@@ -192,9 +261,9 @@ const Index = () => {
                       {feature.description}
                     </p>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </div>
         </section>
 
@@ -202,15 +271,20 @@ const Index = () => {
         <section className="relative px-6 py-32 lg:px-8 border-t border-white/5">
           <div className="container mx-auto max-w-7xl">
             <div className="flex flex-col items-center justify-between gap-16 lg:flex-row">
-              <div className="w-full max-w-xl text-left">
+              <motion.div 
+                initial={{ opacity: 0, x: -50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                className="w-full max-w-xl text-left"
+              >
                 <div className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-400 mb-6 uppercase tracking-wider backdrop-blur-sm">
                   Enterprise Grade
                 </div>
-                <h2 className="text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl mb-8 leading-[1.1] text-white">Built for Scale & <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">White-Labeling</span></h2>
+                <h2 className="text-4xl font-bold tracking-tight md:text-5xl lg:text-6xl mb-8 leading-[1.1] text-white">Built for Scale & <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-cyan-400">White-Labeling</span></h2>
                 <div className="space-y-8 mt-12">
                   <div className="group flex gap-5">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20">
-                      <ShieldCheck className="h-7 w-7 text-indigo-400" />
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-purple-500/20 border border-primary/20 transition-all group-hover:scale-110">
+                      <ShieldCheck className="h-7 w-7 text-primary" />
                     </div>
                     <div className="flex-1">
                       <h4 className="text-xl font-semibold text-slate-200 mb-2">Multi-Tenant Isolation</h4>
@@ -218,7 +292,7 @@ const Index = () => {
                     </div>
                   </div>
                   <div className="group flex gap-5">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/20">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/20 transition-all group-hover:scale-110">
                       <Zap className="h-7 w-7 text-blue-400" />
                     </div>
                     <div className="flex-1">
@@ -227,16 +301,21 @@ const Index = () => {
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
               
-              <div className="relative w-full max-w-lg lg:max-w-xl">
+              <motion.div 
+                initial={{ opacity: 0, x: 50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                className="relative w-full max-w-lg lg:max-w-xl"
+              >
                 {/* Floating decorative elements */}
                 <div className="absolute -top-10 -right-10 h-32 w-32 rounded-full bg-blue-500/20 blur-[60px]" />
-                <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-indigo-600/20 blur-[60px]" />
+                <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-primary/20 blur-[60px]" />
                 
-                <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60 p-10 text-white shadow-2xl backdrop-blur-xl group hover:border-white/20 transition-all duration-500">
+                <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60 p-10 text-white shadow-2xl backdrop-blur-xl group hover:border-primary/20 transition-all duration-500">
                   <div className="absolute top-0 right-0 p-8 opacity-20 group-hover:opacity-40 transition-opacity rotate-12 group-hover:rotate-0 duration-700">
-                    <Bot className="w-32 h-32 text-indigo-400" />
+                    <Bot className="w-32 h-32 text-primary" />
                   </div>
                   <div className="relative z-10 flex flex-col h-full justify-between min-h-[300px]">
                     <div>
@@ -252,12 +331,12 @@ const Index = () => {
                       </h3>
                     </div>
                     <div>
-                      <p className="text-lg font-medium text-indigo-300">Sarah Jenkins</p>
+                      <p className="text-lg font-medium text-primary-foreground">Sarah Jenkins</p>
                       <p className="text-slate-400 text-sm">CTO, TechFlow Solutions</p>
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </div>
         </section>
@@ -289,3 +368,4 @@ const Index = () => {
 };
 
 export default Index;
+

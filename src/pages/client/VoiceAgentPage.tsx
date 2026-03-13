@@ -23,6 +23,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 /* ─── Types ─── */
 interface AgentStats {
@@ -213,158 +215,199 @@ export default function VoiceAgentPage() {
   if (isLoading) return <LoadingSkeleton />;
 
   return (
-    <div className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2">
-            <Bot className="h-6 w-6" style={{ color: primaryColor }} />
-            EcoAssist
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Your AI-powered voice conversations
+          <div className="flex items-center gap-3 mb-1">
+             <div className="h-10 w-10 md:h-12 md:w-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
+               <Bot className="h-6 w-6 md:h-7 md:w-7" style={{ color: primaryColor }} />
+             </div>
+             <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+               EcoAssist
+             </h1>
+          </div>
+          <p className="text-sm text-slate-500 font-medium ml-13 md:ml-15">
+            Your neural voice agent is currently handling global operations.
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Badge variant="outline" className="text-xs py-1 px-3">
-            {agentService.usage_consumed} / {agentService.usage_limit} calls used
+        <div className="flex items-center gap-4 flex-wrap bg-white/80 p-3 rounded-2xl border border-white/50 shadow-sm backdrop-blur-md">
+          <Badge variant="outline" className="text-[10px] py-1.5 px-3 bg-primary/10 border-primary/20 text-primary font-bold uppercase tracking-widest">
+            {agentService.usage_consumed} / {agentService.usage_limit} Signals Used
           </Badge>
-          <div className="flex items-center gap-2">
-            {isActive ? (
-              <Badge className="bg-primary/15 text-primary text-xs animate-pulse">
-                ● Active
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="text-xs">
-                ● Inactive
-              </Badge>
-            )}
-            <Switch checked={isActive} onCheckedChange={toggleActive} />
+          <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
+            <span className={cn("text-[10px] font-bold uppercase tracking-widest transition-colors", isActive ? "text-emerald-600" : "text-slate-400")}>
+              {isActive ? "System Online" : "System Offline"}
+            </span>
+            <Switch checked={isActive} onCheckedChange={toggleActive} className="data-[state=checked]:bg-emerald-500" />
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
-          icon={<PhoneCall className="h-5 w-5" />}
+          icon={<PhoneCall className="h-6 w-6" />}
           color={primaryColor}
-          label="Total Calls"
+          label="Total Communications"
           value={stats?.totalCalls ?? 0}
-          subtext="This month"
+          subtext="Processed this cycle"
         />
         <StatsCard
-          icon={<TrendingUp className="h-5 w-5" />}
-          color="#22c55e"
-          label="Answer Rate"
+          icon={<TrendingUp className="h-6 w-6" />}
+          color="#10b981"
+          label="Conversion Rate"
           value={`${stats?.answerRate ?? 0}%`}
-          subtext={`${stats?.answeredCalls ?? 0} answered`}
+          subtext={`${stats?.answeredCalls ?? 0} successful links`}
         />
         <StatsCard
-          icon={<Clock className="h-5 w-5" />}
-          color={primaryColor}
-          label="Avg Duration"
+          icon={<Clock className="h-6 w-6" />}
+          label="Mean Interaction"
           value={formatDuration(stats?.avgDuration ?? 0)}
-          subtext="Per call average"
+          subtext="Per session average"
+          color="#f59e0b"
         />
         <StatsCard
-          icon={<Users className="h-5 w-5" />}
-          color={primaryColor}
-          label="Leads Captured"
+          icon={<Users className="h-6 w-6" />}
+          label="Qualified Leads"
           value={stats?.leadsCount ?? 0}
-          linkText="View Leads"
+          linkText="Examine Leads"
           onLinkClick={() => navigate("/client/leads")}
+          color="#8b5cf6"
         />
       </div>
 
-      {/* Status Card */}
-      <Card>
-        <CardContent className="pt-6">
-          {isActive ? (
-            <div className="rounded-lg bg-primary/5 border border-primary/20 p-5">
-              <div className="flex items-center gap-3">
-                <div className="rounded-full bg-primary/15 p-2">
-                  <CheckCircle className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground">
-                    Your AI Voice Agent is ACTIVE
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Handling calls automatically with AI
-                  </p>
-                </div>
+      {/* Main Console Grid */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
+        <Card className="lg:col-span-2 bg-white border-slate-200/60 shadow-sm overflow-hidden group hover:shadow-md transition-all">
+          <CardHeader className="border-b border-slate-200/60 bg-slate-50/50 py-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Activity className="h-5 w-5 text-primary" />
+                Signal Continuity
+              </CardTitle>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map(i => <div key={i} className="h-1 w-4 rounded-full bg-primary/20" />)}
               </div>
             </div>
-          ) : (
-            <div className="rounded-lg bg-muted p-5 text-center">
-              <Pause className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="font-semibold text-foreground">
-                Your AI Voice Agent is INACTIVE
-              </p>
-              <p className="text-sm text-muted-foreground mb-4">
-                {workflowInstance
-                  ? "Activate to start handling calls"
-                  : "Contact your admin to set up the agent workflow"}
-              </p>
-              {workflowInstance && (
-                <Button
-                  style={{ backgroundColor: primaryColor, color: "white" }}
-                  onClick={() => toggleActive(true)}
-                >
-                  Activate Now
+          </CardHeader>
+          <CardContent className="pt-8">
+            {chartData.some((d) => d.calls > 0) ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={chartData}>
+                  <defs>
+                    <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor={primaryColor} />
+                      <stop offset="100%" stopColor="#fa692c" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200" vertical={false} />
+                  <XAxis 
+                    dataKey="date" 
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} 
+                    interval={4} 
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} 
+                    allowDecimals={false} 
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "rgba(255, 255, 255, 0.95)",
+                      border: "1px solid rgba(0, 0, 0, 0.05)",
+                      borderRadius: "12px",
+                      fontSize: 12,
+                      backdropFilter: "blur(8px)",
+                      color: "#1e293b"
+                    }}
+                    itemStyle={{ color: primaryColor }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="calls"
+                    stroke="url(#lineGradient)"
+                    strokeWidth={3}
+                    dot={{ fill: primaryColor, strokeWidth: 2, r: 4, stroke: "white" }}
+                    activeDot={{ r: 6, strokeWidth: 0 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center py-20 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-primary/5 opacity-5" />
+                <div className="h-16 w-16 rounded-full bg-primary/5 border border-primary/10 flex items-center justify-center mx-auto mb-4 relative z-10">
+                  <Activity className="h-8 w-8 text-primary animate-pulse" />
+                </div>
+                <p className="text-lg font-bold text-slate-800 mb-1 relative z-10">Infrastucture Idle</p>
+                <p className="text-sm text-slate-500 relative z-10">Global signal data will appear here once sequences begin.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white/80 border-white/50 shadow-sm backdrop-blur-xl flex flex-col overflow-hidden">
+          <CardHeader className="border-b border-sidebar-border/10 bg-sidebar/5 py-4">
+            <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Settings className="h-5 w-5 text-primary" />
+              Agent Core
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col justify-center p-8">
+            {isActive ? (
+              <div className="space-y-6 text-center">
+                <div className="relative mx-auto w-24 h-24">
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-0 rounded-full border-2 border-dashed border-primary/30"
+                  />
+                  <div className="absolute inset-2 rounded-full bg-emerald-100 flex items-center justify-center border border-emerald-200">
+                    <CheckCircle className="h-10 w-10 text-emerald-600" />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-800 mb-2 underline decoration-primary/30 decoration-4 underline-offset-4 tracking-tight">System Operational</h3>
+                  <p className="text-sm text-slate-500 leading-relaxed font-medium">Agent is intercepting streams and executing neural responses.</p>
+                </div>
+                <Button variant="outline" className="w-full border-sidebar-border/20 hover:bg-sidebar/5 hover:text-primary transition-all rounded-xl font-bold" onClick={() => toggleActive(false)}>
+                   Emergency Suspension
                 </Button>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+            ) : (
+              <div className="space-y-6 text-center">
+                <div className="h-20 w-20 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto">
+                  <Pause className="h-10 w-10 text-slate-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-800 mb-2 tracking-tight">Interface Locked</h3>
+                  <p className="text-sm text-slate-500 leading-relaxed">
+                    {workflowInstance ? "Initial setup complete. Ready for deployment." : "Neural path not yet established. Contact Central Command."}
+                  </p>
+                </div>
+                {workflowInstance && (
+                  <Button 
+                    className="w-full bg-primary text-white font-bold h-12 rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform" 
+                    onClick={() => toggleActive(true)}
+                  >
+                    Bootstrap Agent
+                  </Button>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Call Trend Chart */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Call Volume (Last 30 Days)</CardTitle>
+      {/* Recent Activity Table */}
+      <Card className="bg-white/80 border-white/50 shadow-sm backdrop-blur-xl overflow-hidden mt-6">
+        <CardHeader className="border-b border-sidebar-border/10 py-4 bg-sidebar/5">
+          <CardTitle className="text-lg font-bold text-slate-800">Stream Manifest</CardTitle>
         </CardHeader>
-        <CardContent>
-          {chartData.some((d) => d.calls > 0) ? (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={4} />
-                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                    fontSize: 12,
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="calls"
-                  stroke={primaryColor}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="text-center py-10">
-              <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No call data yet</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Recent Calls */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-lg">Recent Calls</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {recentCalls.length > 0 ? (
             <>
               {/* Desktop table */}
@@ -465,17 +508,16 @@ export default function VoiceAgentPage() {
               </div>
             </>
           ) : (
-            <div className="text-center py-10">
-              <Phone className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No calls recorded yet</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Calls will appear here once your voice agent starts handling them.
-              </p>
+            <div className="text-center py-20 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent to-primary/5 opacity-5" />
+              <Phone className="h-10 w-10 text-primary mx-auto mb-4 animate-float relative z-10" />
+              <p className="text-lg font-bold text-slate-800 mb-1 relative z-10">Silence on the Wire</p>
+              <p className="text-sm text-slate-500 max-w-xs mx-auto relative z-10">Signals will be logged here as soon as the neural agent intercepts incoming traffic.</p>
             </div>
           )}
         </CardContent>
       </Card>
-    </div>
+    </motion.div>
   );
 }
 
@@ -499,30 +541,34 @@ function StatsCard({
   onLinkClick?: () => void;
 }) {
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
+    <Card className="bg-white/80 border-white/50 shadow-sm backdrop-blur-xl hover:shadow-md hover:border-primary/30 transition-all group overflow-hidden relative">
+      <div 
+        className="absolute -top-10 -right-10 h-24 w-24 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none" 
+        style={{ backgroundColor: color }}
+      />
+      <CardContent className="pt-6 relative z-10">
+        <div className="flex items-center gap-4">
           <div
-            className="rounded-lg p-2.5"
-            style={{ backgroundColor: `${color}15` }}
+            className="rounded-2xl p-4 border border-sidebar-border/10 bg-sidebar/5 group-hover:bg-primary/10 transition-all text-primary"
+            style={{ color }}
           >
-            <div style={{ color }}>{icon}</div>
+            {icon}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-2xl font-bold">{value}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            {subtext && (
-              <p className="text-[11px] text-muted-foreground">{subtext}</p>
-            )}
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{label}</p>
+            <div className="flex items-baseline gap-2">
+               <p className="text-2xl font-black text-slate-900 tracking-tight">{value}</p>
+            </div>
+            {subtext && <p className="text-[10px] text-slate-500 font-medium italic mt-1 leading-none">{subtext}</p>}
           </div>
           {linkText && onLinkClick && (
             <Button
               variant="ghost"
               size="sm"
-              className="text-xs shrink-0"
+              className="h-8 px-2 text-[10px] font-black text-primary hover:bg-primary/10 rounded-lg group-hover:translate-x-1 transition-transform"
               onClick={onLinkClick}
             >
-              {linkText} <ArrowRight className="h-3 w-3 ml-1" />
+              {linkText}
             </Button>
           )}
         </div>
@@ -532,17 +578,17 @@ function StatsCard({
 }
 
 function CallStatusBadge({ status }: { status: string }) {
-  const variant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-    completed: "default",
-    answered: "default",
-    ringing: "secondary",
-    "in-progress": "secondary",
-    failed: "destructive",
-    "no-answer": "outline",
-    busy: "outline",
+  const variant: Record<string, string> = {
+    completed: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    answered: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    ringing: "bg-blue-100 text-blue-700 border-blue-200",
+    "in-progress": "bg-blue-100 text-blue-700 border-blue-200",
+    failed: "bg-red-100 text-red-700 border-red-200",
+    "no-answer": "bg-slate-100 text-slate-700 border-slate-200",
+    busy: "bg-amber-100 text-amber-700 border-amber-200",
   };
   return (
-    <Badge variant={variant[status] || "outline"} className="text-[10px] capitalize">
+    <Badge variant="outline" className={cn("text-[10px] font-bold uppercase rounded-lg px-2", variant[status] || "bg-slate-500/10 text-slate-400 border-slate-500/20")}>
       {status}
     </Badge>
   );
@@ -550,22 +596,24 @@ function CallStatusBadge({ status }: { status: string }) {
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-12">
       <div className="flex items-center justify-between">
-        <div>
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-4 w-72 mt-2" />
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-48 bg-slate-200" />
+          <Skeleton className="h-4 w-72 bg-slate-100" />
         </div>
-        <Skeleton className="h-9 w-32" />
+        <Skeleton className="h-12 w-48 bg-slate-200 rounded-2xl" />
       </div>
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-28" />
+          <Skeleton key={i} className="h-28 bg-white/80 rounded-2xl border border-white/50" />
         ))}
       </div>
-      <Skeleton className="h-32" />
-      <Skeleton className="h-[260px]" />
-      <Skeleton className="h-[300px]" />
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
+        <Skeleton className="h-[380px] lg:col-span-2 bg-white/80 rounded-2xl border border-white/50" />
+        <Skeleton className="h-[380px] bg-white/80 rounded-2xl border border-white/50" />
+      </div>
+      <Skeleton className="h-64 bg-white/80 rounded-2xl border border-white/50" />
     </div>
   );
 }

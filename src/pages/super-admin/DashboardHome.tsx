@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Users, Briefcase, Layers, DollarSign } from "lucide-react";
+import { Users, Briefcase, Layers, DollarSign, Zap, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -163,52 +164,71 @@ export default function DashboardHome() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground">Platform overview and key metrics</p>
-      </div>
+      {/* Header Banner */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col md:flex-row items-center justify-between gap-6 p-8 rounded-3xl bg-gradient-to-br from-primary/10 via-white to-accent/10 border border-primary/20 shadow-sm relative overflow-hidden group mb-8"
+      >
+        <div className="absolute top-0 right-0 p-8 opacity-[0.05] group-hover:opacity-[0.08] transition-opacity pointer-events-none">
+          <Zap className="w-48 h-48 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0 z-10 text-center md:text-left">
+          <h1 className="text-3xl md:text-4xl font-black text-slate-900 mb-2 tracking-tight">
+            Super Admin Portal
+          </h1>
+          <p className="text-slate-500 font-medium italic">
+            Platform overview and high-level network monitoring.
+          </p>
+        </div>
+        <div className="shrink-0 text-right z-10 hidden sm:block">
+          <p className="text-4xl font-black text-primary tabular-nums tracking-tighter">PIXORA</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-1">NEST CONTROL</p>
+        </div>
+      </motion.div>
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((sc) => (
-          <Card key={sc.key}>
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${sc.bg}`}>
-                <sc.icon className={`h-6 w-6 ${sc.color}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm text-muted-foreground">{sc.label}</p>
-                {loading ? (
-                  <Skeleton className="mt-1 h-7 w-16" />
-                ) : (
-                  <p className="text-2xl font-bold text-foreground">
-                    {sc.key === "monthlyRevenue"
-                      ? formatCurrency(stats?.monthlyRevenue ?? 0)
-                      : (stats?.[sc.key] ?? 0).toLocaleString()}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">{sc.sub}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <motion.div whileHover={{ y: -5 }} key={sc.key}>
+            <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] hover:shadow-[0_12px_30px_-10px_rgba(48,79,159,0.2)] hover:border-primary/50 transition-all group overflow-hidden relative">
+              <CardContent className="flex items-center gap-4 p-6">
+                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sidebar/5 group-hover:bg-primary/10 transition-colors`}>
+                  <sc.icon className={`h-6 w-6 text-primary`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{sc.label}</p>
+                  {loading ? (
+                    <Skeleton className="mt-1 h-7 w-16" />
+                  ) : (
+                    <p className="text-2xl font-black text-slate-900 tracking-tight">
+                      {sc.key === "monthlyRevenue"
+                        ? formatCurrency(stats?.monthlyRevenue ?? 0)
+                        : (stats?.[sc.key] ?? 0).toLocaleString()}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-slate-500 font-medium italic">{sc.sub}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
 
       {/* Tables */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Recent Admins */}
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
-            <CardTitle className="text-lg">Recent Admins</CardTitle>
+        <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] overflow-hidden">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-4 border-b border-sidebar-border/5">
+            <CardTitle className="text-lg font-bold text-slate-800">Recent Admins</CardTitle>
             <button
               onClick={() => navigate("/super-admin/admins")}
-              className="text-sm font-medium text-primary hover:underline"
+              className="text-sm font-bold text-primary hover:underline uppercase tracking-wider"
             >
               View All
             </button>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 pt-2">
             {loading ? (
               <div className="space-y-3 p-6 pt-0">
                 {[...Array(3)].map((_, i) => (
@@ -289,17 +309,17 @@ export default function DashboardHome() {
         </Card>
 
         {/* Recent Clients */}
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
-            <CardTitle className="text-lg">Recent Clients</CardTitle>
+        <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] overflow-hidden">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-4 border-b border-sidebar-border/5">
+            <CardTitle className="text-lg font-bold text-slate-800">Recent Clients</CardTitle>
             <button
               onClick={() => navigate("/super-admin/clients")}
-              className="text-sm font-medium text-primary hover:underline"
+              className="text-sm font-bold text-primary hover:underline uppercase tracking-wider"
             >
               View All
             </button>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 pt-2">
             {loading ? (
               <div className="space-y-3 p-6 pt-0">
                 {[...Array(3)].map((_, i) => (

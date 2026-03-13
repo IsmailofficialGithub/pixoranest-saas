@@ -12,12 +12,14 @@ import { useNavigate } from "react-router-dom";
 import {
   Package, Activity, Users, Zap, MessageCircle, Phone,
   Share2, MessageSquare, AlertTriangle, XCircle, ArrowRight,
-  PhoneIncoming, Headphones,
+  PhoneIncoming, Headphones, Sparkles, TrendingUp
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ServiceCard } from "@/components/services/ServiceCard";
 import { useClientServices } from "@/hooks/useClientServices";
 import { getServicePath, SERVICE_LABEL_MAP } from "@/lib/service-routes";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 interface DashboardStats {
   activeServices: number;
@@ -77,10 +79,8 @@ export default function ClientDashboardHome() {
       activeCampaigns: listsRes.count || 0,
     });
 
-    // Build activity timeline
     const items: ActivityItem[] = [];
     
-    // Regular call logs
     callsRes.data?.forEach(c => {
       items.push({
         id: c.id,
@@ -91,7 +91,6 @@ export default function ClientDashboardHome() {
       });
     });
 
-    // Outbound call logs (from the other table)
     outboundCallsRes.data?.forEach((c: any) => {
       items.push({
         id: c.id,
@@ -127,50 +126,66 @@ export default function ClientDashboardHome() {
     setIsLoading(false);
   }
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 }
+  };
+
   if (contextLoading || isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-10 w-64 bg-white/5" />
+          <Skeleton className="h-4 w-40 bg-white/5" />
+        </div>
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28" />)}
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24 bg-white/5 rounded-2xl" />)}
         </div>
         <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-48" />)}
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-48 bg-white/5 rounded-2xl" />)}
         </div>
       </div>
     );
   }
 
-  // No services assigned state
   if (assignedServices.length === 0) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">
-            Welcome, {profile?.full_name || profile?.email}!
-          </h1>
-          <p className="text-sm text-muted-foreground">{client?.company_name}</p>
-        </div>
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="rounded-full bg-muted p-6 mb-6">
-            <Package className="h-12 w-12 text-muted-foreground" />
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="rounded-3xl bg-white/5 p-10 border border-white/10 backdrop-blur-xl max-w-lg"
+        >
+          <div className="rounded-2xl bg-primary/10 p-6 mb-6 inline-block">
+            <Package className="h-16 w-16 text-primary" />
           </div>
-          <h2 className="text-xl font-semibold text-foreground mb-2">
+          <h1 className="text-3xl font-bold text-white mb-4">
+            Hello, {profile?.full_name || profile?.email}!
+          </h1>
+          <h2 className="text-xl font-semibold text-slate-200 mb-2">
             No services have been assigned yet
           </h2>
-          <p className="text-muted-foreground max-w-md mb-6">
-            Contact {admin?.company_name || "your admin"} to get started with AI services.
+          <p className="text-slate-400 mb-8 leading-relaxed">
+            Your dashboard is ready, but you haven't been assigned any AI services yet. 
+            Contact {admin?.company_name || "your admin"} to get started.
           </p>
-          <Button style={{ backgroundColor: primaryColor, color: "white" }}>
-            <MessageCircle className="h-4 w-4 mr-2" />
-            Contact Admin
+          <Button size="lg" className="rounded-full px-8 shadow-xl shadow-primary/20" style={{ backgroundColor: primaryColor, color: "white" }}>
+            <MessageCircle className="h-5 w-5 mr-2" />
+            Contact Administrator
           </Button>
-        </div>
+        </motion.div>
       </div>
     );
   }
 
-  // Usage alerts
   const nearLimitServices = assignedServices.filter(s => {
     const pct = s.usage_limit > 0 ? (s.usage_consumed / s.usage_limit) * 100 : 0;
     return pct >= 80;
@@ -179,80 +194,58 @@ export default function ClientDashboardHome() {
   const hasService = (slug: string) => assignedServices.some(s => s.service_slug === slug || s.service_slug === `ai-${slug}`);
 
   const getUsageColor = (pct: number) => {
-    if (pct >= 90) return "text-destructive";
-    if (pct >= 70) return "text-yellow-600";
-    return "text-emerald-600";
-  };
-
-  const getProgressColor = (pct: number) => {
-    if (pct >= 90) return "[&>div]:bg-destructive";
-    if (pct >= 70) return "[&>div]:bg-yellow-500";
-    return "[&>div]:bg-emerald-500";
-  };
-
-  const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
-    switch (status) {
-      case "completed": case "success": case "delivered": case "read": return "default";
-      case "running": case "sending": case "ringing": case "answered": return "secondary";
-      case "failed": case "error": case "cancelled": return "destructive";
-      default: return "outline";
-    }
-  };
-
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case "call": return <Phone className="h-4 w-4" />;
-      case "campaign": return <Zap className="h-4 w-4" />;
-      case "whatsapp": return <MessageSquare className="h-4 w-4" />;
-      default: return <Activity className="h-4 w-4" />;
-    }
+    if (pct >= 90) return "text-red-400";
+    if (pct >= 75) return "text-orange-400";
+    return "text-emerald-400";
   };
 
   return (
-    <div className="space-y-6">
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-8"
+    >
       {/* Usage Alerts */}
       {nearLimitServices.length > 0 && (
-        <div className="space-y-2">
-          {nearLimitServices.map(svc => {
-            const pct = Math.round((svc.usage_consumed / svc.usage_limit) * 100);
-            const isOver = pct >= 100;
-            return (
-              <Alert key={svc.id} className={isOver ? "border-destructive/50 bg-destructive/5" : "border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20"}>
-                {isOver ? <XCircle className="h-4 w-4 text-destructive" /> : <AlertTriangle className="h-4 w-4 text-yellow-600" />}
-                <AlertDescription className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-sm">
-                    {isOver
-                      ? `🚫 You've reached your ${svc.service_name} limit`
-                      : `⚠️ You're using ${pct}% of your ${svc.service_name} limit`
-                    }
-                  </span>
-                  <Button variant="outline" size="sm" onClick={() => navigate("/client/usage")}>
-                    View Usage
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            );
-          })}
-        </div>
+        <Alert className="bg-red-50 border-red-200 text-red-800 rounded-2xl">
+          <AlertTriangle className="h-5 w-5 text-red-600" />
+          <AlertDescription className="flex items-center justify-between flex-wrap gap-4">
+            <span className="font-bold text-sm">
+              Critical usage alerts for {nearLimitServices.length} {nearLimitServices.length === 1 ? 'service' : 'services'}. Some limits are almost reached.
+            </span>
+            <Button variant="outline" size="sm" className="bg-red-100 border-red-200 text-red-800 hover:bg-red-200 rounded-xl" onClick={() => navigate("/client/usage")}>
+              Review Usage
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Welcome Banner */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="text-xl md:text-2xl font-bold text-foreground truncate">
-            Welcome back, {profile?.full_name || profile?.email}!
+      <motion.div variants={itemVariants} className="flex flex-col md:flex-row items-center justify-between gap-6 p-8 rounded-3xl bg-gradient-to-br from-primary/10 via-white to-accent/10 border border-primary/20 shadow-sm relative overflow-hidden group">
+        <div className="absolute top-0 right-0 p-8 opacity-[0.05] group-hover:opacity-[0.08] transition-opacity pointer-events-none">
+          <TrendingUp className="w-48 h-48 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0 z-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase tracking-widest mb-4">
+            <Sparkles className="h-3 w-3" />
+            <span>AI Efficiency Status: Optimal</span>
+          </div>
+          <h1 className="text-3xl md:text-4xl font-black text-slate-900 mb-2 tracking-tight">
+            Welcome back, {profile?.full_name?.split(' ')[0] || 'Member'}!
           </h1>
-          <p className="text-xs md:text-sm text-muted-foreground">
-            {client?.company_name}
+          <p className="text-slate-500 flex items-center gap-2 font-medium">
+            Managing <span className="text-primary font-bold">{client?.company_name}</span> ecosystem
           </p>
         </div>
-        <p className="text-sm text-muted-foreground hidden sm:block shrink-0">
-          {format(new Date(), "EEEE, MMMM d, yyyy")}
-        </p>
-      </div>
+        <div className="shrink-0 text-right z-10 hidden sm:block">
+          <p className="text-4xl font-black text-primary tabular-nums">{format(new Date(), "HH:mm")}</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">{format(new Date(), "EEEE, MMMM d")}</p>
+        </div>
+      </motion.div>
 
       {/* Stats Cards */}
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <motion.div variants={itemVariants} className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           icon={<Package className="h-5 w-5" />}
           color={primaryColor}
@@ -264,254 +257,217 @@ export default function ClientDashboardHome() {
         <StatsCard
           icon={<Activity className="h-5 w-5" />}
           color={primaryColor}
-          label="This Month Usage"
-          value={`${(stats?.totalUsage ?? 0).toLocaleString()} units`}
-          subtext="Across all services"
+          label="Usage This Month"
+          value={(stats?.totalUsage ?? 0).toLocaleString()}
+          subtext="Total units consumed"
         />
         <StatsCard
           icon={<Users className="h-5 w-5" />}
           color={primaryColor}
-          label="Leads This Month"
+          label="New Leads"
           value={stats?.leadsThisMonth ?? 0}
-          linkText="View Leads"
+          linkText="View"
           onLinkClick={() => navigate("/client/leads")}
         />
         <StatsCard
           icon={<Zap className="h-5 w-5" />}
           color={primaryColor}
-          label="Active Campaigns"
+          label="Campaigns"
           value={stats?.activeCampaigns ?? 0}
-          subtext="Running now"
+          subtext="Active sequences"
         />
-      </div>
+      </motion.div>
 
       {/* My Services */}
-      <div>
-        <h2 className="text-lg font-semibold text-foreground mb-4">My Services</h2>
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      <motion.div variants={itemVariants}>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Active Infrastructure</h2>
+          <Button variant="ghost" size="sm" className="text-primary font-bold hover:bg-primary/10 rounded-xl px-4" onClick={() => navigate("/client/services")}>
+            Service Catalog <ArrowRight className="h-4 w-4 ml-2" />
+          </Button>
+        </div>
+        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {assignedServices.map((svc) => {
             const pct = svc.usage_limit > 0 ? Math.round((svc.usage_consumed / svc.usage_limit) * 100) : 0;
             const isOverLimit = pct >= 100;
-            const isNearLimit = pct >= 90 && !isOverLimit;
+            const isNearLimit = pct >= 75 && !isOverLimit;
 
             return (
-              <Card key={svc.id} className="flex flex-col">
-                <CardContent className="pt-6 flex-1 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="rounded-lg p-2" style={{ backgroundColor: `${primaryColor}15` }}>
-                        <ServiceIcon slug={svc.service_slug} color={primaryColor} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate">
-                          {SERVICE_LABEL_MAP[svc.service_slug as keyof typeof SERVICE_LABEL_MAP] || svc.service_name}
-                        </p>
-                        <Badge variant="outline" className="text-[10px] capitalize mt-0.5">{svc.service_category}</Badge>
+              <motion.div key={svc.id} whileHover={{ y: -5 }} className="group">
+                <Card className="flex flex-col h-full bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] transition-all duration-300 overflow-hidden group-hover:shadow-[0_12px_30px_-10px_rgba(48,79,159,0.2)] group-hover:border-primary/50">
+                  <div className="h-1 bg-slate-100 w-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      className={cn("h-full", isOverLimit ? "bg-red-500" : isNearLimit ? "bg-orange-400" : "bg-primary")}
+                    />
+                  </div>
+                  <CardContent className="pt-8 flex-1 space-y-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="rounded-2xl p-3 bg-white/5 border border-white/10 group-hover:bg-primary/10 group-hover:border-primary/20 transition-all">
+                          <ServiceIcon slug={svc.service_slug} color={primaryColor} size={24} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-lg font-bold text-slate-800 tracking-tight truncate leading-tight group-hover:text-primary transition-colors">
+                            {SERVICE_LABEL_MAP[svc.service_slug as keyof typeof SERVICE_LABEL_MAP] || svc.service_name}
+                          </p>
+                          <Badge variant="outline" className="text-[10px] uppercase tracking-tighter mt-1 bg-primary/5 border-primary/10 text-primary">{svc.service_category}</Badge>
+                        </div>
                       </div>
                     </div>
-                    {isOverLimit && (
-                      <Badge variant="destructive" className="text-[10px] shrink-0">🚫 Limit Reached</Badge>
-                    )}
-                    {isNearLimit && (
-                      <Badge className="text-[10px] shrink-0 bg-yellow-500 text-white hover:bg-yellow-600">⚠️ Near Limit</Badge>
-                    )}
-                  </div>
 
-                  {/* Usage bar */}
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-muted-foreground">
-                        {svc.usage_consumed.toLocaleString()} / {svc.usage_limit.toLocaleString()} used
-                      </span>
-                      <span className={`font-medium ${getUsageColor(pct)}`}>{pct}%</span>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs font-bold mb-1">
+                        <span className="text-slate-400 uppercase tracking-widest text-[9px]">Resource Usage</span>
+                        <span className={getUsageColor(pct)}>{pct}%</span>
+                      </div>
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(pct, 100)}%` }}
+                          transition={{ duration: 1, ease: "easeOut" }}
+                          className={cn(
+                            "h-full transition-all",
+                            pct >= 90 ? "bg-red-500" : pct >= 75 ? "bg-orange-500" : "bg-emerald-500"
+                          )}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center text-[10px]">
+                        <span className="text-slate-500 font-medium">
+                          {svc.usage_consumed.toLocaleString()} / {svc.usage_limit.toLocaleString()} units
+                        </span>
+                        <span className="text-slate-500 italic">Resets {svc.reset_period || "monthly"}</span>
+                      </div>
                     </div>
-                    <Progress value={Math.min(pct, 100)} className={`h-2 ${getProgressColor(pct)}`} />
-                    <p className="text-[11px] text-muted-foreground mt-1 capitalize">
-                      Resets: {svc.reset_period || "never"}
-                    </p>
-                  </div>
-
-                  {isOverLimit && (
-                    <p className="text-[11px] text-destructive">Contact admin to increase your limit</p>
-                  )}
-                  {isNearLimit && (
-                    <p className="text-[11px] text-yellow-600">Contact admin to increase limit</p>
-                  )}
-                </CardContent>
-                <div className="px-6 pb-4">
-                  {isOverLimit ? (
-                    <Button variant="outline" size="sm" className="w-full">
-                      Request Increase
-                    </Button>
-                  ) : (
+                  </CardContent>
+                  <div className="px-6 pb-6">
                     <Button
-                      size="sm"
-                      className="w-full text-white"
+                      size="lg"
+                      className="w-full text-white font-bold rounded-xl shadow-lg shadow-primary/10 group-hover:shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
                       style={{ backgroundColor: primaryColor }}
                       onClick={() => navigate(getServicePath(svc.service_slug))}
                     >
-                      Open
+                      Access Console
+                      <ArrowRight className="h-4 w-4 ml-2 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </Button>
-                  )}
-                </div>
-              </Card>
+                  </div>
+                </Card>
+              </motion.div>
             );
           })}
         </div>
-      </div>
+      </motion.div>
 
-      {/* All Available Services (with lock state) */}
       <ClientAllServices primaryColor={primaryColor} />
 
-      {/* Bottom Row: Activity + Quick Actions */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
-        {/* Recent Activity */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg">Recent Activity</CardTitle>
-            <Button variant="ghost" size="sm" className="text-xs">
-              View All <ArrowRight className="h-3 w-3 ml-1" />
+      <motion.div variants={itemVariants} className="grid gap-6 grid-cols-1 lg:grid-cols-3">
+        <Card className="lg:col-span-2 bg-white border-slate-200/60 shadow-sm overflow-hidden group hover:shadow-md transition-all">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-slate-200/60 py-4">
+            <CardTitle className="text-xl font-bold text-slate-800">Stream Activity</CardTitle>
+            <Button variant="ghost" size="sm" className="text-primary" onClick={() => navigate("/client/usage")}>
+              Full Logs <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {activities.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {activities.map((item) => (
-                  <div key={`${item.type}-${item.id}`} className="flex items-start gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                    <div className="rounded-full p-2 bg-muted shrink-0 mt-0.5">
+                  <div key={`${item.type}-${item.id}`} className="group flex items-center gap-4 p-3 rounded-2xl hover:bg-white/5 transition-all">
+                    <div className="rounded-xl p-3 bg-white/5 border border-white/10 group-hover:border-primary/30 transition-all">
                       {getActivityIcon(item.type)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">{item.description}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm font-semibold text-white truncate">{item.description}</p>
+                      <p className="text-xs text-slate-500">
                         {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
                       </p>
                     </div>
-                    <Badge variant={getStatusVariant(item.status)} className="text-[10px] shrink-0 capitalize">
+                    <Badge className={cn(
+                      "rounded-lg px-3 py-1 text-[10px] font-bold uppercase",
+                      item.status.includes('fail') ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    )}>
                       {item.status}
                     </Badge>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-10">
-                <Activity className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-sm font-medium text-foreground mb-1">No activity yet</p>
-                <p className="text-xs text-muted-foreground">Get started by using one of your services!</p>
+              <div className="text-center py-16">
+                <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/10">
+                  <Activity className="h-8 w-8 text-slate-600" />
+                </div>
+                <p className="text-lg font-bold text-white mb-1">Infrastucture Idle</p>
+                <p className="text-sm text-slate-500">Global activity will appear here once sequences begin.</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Quick Actions</CardTitle>
+        <Card className="bg-slate-900/40 border-white/5 backdrop-blur-sm">
+          <CardHeader className="border-b border-white/5 py-4">
+            <CardTitle className="text-xl font-bold text-white">Neural Gateways</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="pt-8 space-y-3">
             {hasService("voice-telecaller") && (
               <QuickActionButton
-                icon={<Phone className="h-4 w-4" />}
-                label="Start Calling Campaign"
-                description="Launch voice telecaller"
+                icon={<Phone className="h-5 w-5" />}
+                label="Telecaller Hub"
+                description="Launch sequences"
                 color={primaryColor}
                 onClick={() => navigate(getServicePath("voice-telecaller"))}
               />
             )}
-            {hasService("voice-receptionist") && (
-              <QuickActionButton
-                icon={<PhoneIncoming className="h-4 w-4" />}
-                label="Call Orbitor"
-                description="Manage inbound calls"
-                color={primaryColor}
-                onClick={() => navigate(getServicePath("voice-receptionist"))}
-              />
-            )}
-            {hasService("voice-agent") && (
-              <QuickActionButton
-                icon={<Headphones className="h-4 w-4" />}
-                label="EcoAssist"
-                description="AI voice conversations"
-                color={primaryColor}
-                onClick={() => navigate(getServicePath("voice-agent"))}
-              />
-            )}
             {hasService("whatsapp") && (
               <QuickActionButton
-                icon={<MessageCircle className="h-4 w-4" />}
-                label="LeadNest"
-                description="Bulk messaging"
+                icon={<MessageCircle className="h-5 w-5" />}
+                label="LeadNest Core"
+                description="WhatsApp flows"
                 color={primaryColor}
                 onClick={() => navigate(getServicePath("whatsapp"))}
               />
             )}
-            {hasService("social-media") && (
-              <QuickActionButton
-                icon={<Share2 className="h-4 w-4" />}
-                label="Socialium"
-                description="Social media management"
-                color={primaryColor}
-                onClick={() => navigate(getServicePath("social-media"))}
-              />
-            )}
             <QuickActionButton
-              icon={<Users className="h-4 w-4" />}
-              label="View All Leads"
-              description="Manage captured leads"
+              icon={<Users className="h-5 w-5" />}
+              label="Intelligence Base"
+              description="Manage leads"
               color={primaryColor}
               onClick={() => navigate("/client/leads")}
             />
-            <QuickActionButton
-              icon={<MessageSquare className="h-4 w-4" />}
-              label="Contact Support"
-              description="Message your admin"
-              color={primaryColor}
-              onClick={() => {}}
-            />
+            <div className="pt-4 mt-4 border-t border-white/5">
+              <Button variant="outline" className="w-full border-white/10 text-slate-300 hover:bg-white/5 rounded-xl py-6 gap-3">
+                <Headphones className="h-4 w-4" />
+                Reach Technical Support
+              </Button>
+            </div>
           </CardContent>
         </Card>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
-/* ─── All Services with Lock State ─── */
-
 function ClientAllServices({ primaryColor }: { primaryColor: string }) {
   const { services, loading } = useClientServices();
-
-  // Only show locked services here (unlocked are shown in "My Services" above)
   const lockedServices = services.filter((s) => s.is_locked);
 
-  if (loading) {
-    return (
-      <div>
-        <h2 className="text-lg font-semibold text-foreground mb-4">Other Services</h2>
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40" />)}
-        </div>
-      </div>
-    );
-  }
-
+  if (loading) return null;
   if (lockedServices.length === 0) return null;
 
   return (
-    <div>
-      <h2 className="text-lg font-semibold text-foreground mb-4">
-        Other Services
-        <Badge variant="outline" className="ml-2 text-xs">{lockedServices.length} locked</Badge>
-      </h2>
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+    <motion.div variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }} className="pt-8">
+      <div className="flex items-center gap-4 mb-6">
+        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Available Expansion</h2>
+        <Badge variant="outline" className="bg-primary/5 border-primary/10 text-primary uppercase text-[9px] tracking-widest">{lockedServices.length} Locked</Badge>
+      </div>
+      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {lockedServices.map((s) => (
           <ServiceCard key={s.id} service={s} primaryColor={primaryColor} />
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 }
-
-/* ─── Sub-components ─── */
 
 function StatsCard({
   icon, color, label, value, subtext, linkText, onLinkClick,
@@ -525,20 +481,26 @@ function StatsCard({
   onLinkClick?: () => void;
 }) {
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg p-2.5" style={{ backgroundColor: `${color}15` }}>
-            <div style={{ color }}>{icon}</div>
+    <Card className="bg-white/95 border-primary/20 shadow-[0_4px_20px_-4px_rgba(48,79,159,0.1)] hover:shadow-[0_12px_30px_-10px_rgba(48,79,159,0.2)] hover:border-primary/50 transition-all group overflow-hidden relative">
+      <div 
+        className="absolute -top-10 -right-10 h-24 w-24 rounded-full blur-2xl opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none" 
+        style={{ backgroundColor: color }}
+      />
+      <CardContent className="pt-6 relative z-10">
+        <div className="flex items-center gap-4">
+          <div className="rounded-2xl p-4 border border-sidebar-border/10 bg-sidebar/5 group-hover:bg-primary/10 transition-all text-primary" style={{ color }}>
+            {icon}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-2xl font-bold">{value}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            {subtext && <p className="text-[11px] text-muted-foreground">{subtext}</p>}
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">{label}</p>
+            <div className="flex items-baseline gap-2">
+               <p className="text-2xl font-black text-slate-900 tracking-tight">{value}</p>
+            </div>
+            {subtext && <p className="text-[10px] text-slate-600 font-medium italic mt-1 leading-none">{subtext}</p>}
           </div>
           {linkText && onLinkClick && (
-            <Button variant="ghost" size="sm" className="text-xs shrink-0" onClick={onLinkClick}>
-              {linkText} <ArrowRight className="h-3 w-3 ml-1" />
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-[10px] font-black text-primary hover:bg-primary/10 rounded-lg group-hover:translate-x-1 transition-transform" onClick={onLinkClick}>
+              {linkText}
             </Button>
           )}
         </div>
@@ -559,24 +521,27 @@ function QuickActionButton({
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-3 w-full rounded-lg border p-3 text-left transition-colors hover:border-transparent"
-      style={{ ["--hover-bg" as string]: `${color}10` }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = `${color}10`; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ""; }}
+      className="group flex items-center gap-4 w-full rounded-2xl border border-white/60 bg-white/40 backdrop-blur-md p-4 text-left transition-all hover:bg-white/60 hover:border-primary/30 shadow-sm overflow-hidden relative"
     >
-      <div className="rounded-md p-2" style={{ backgroundColor: `${color}15`, color }}>
+      <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-10 transition-opacity">
+        <Sparkles className="h-12 w-12 text-primary" />
+      </div>
+      <div className="rounded-xl p-3 bg-white/5 border border-white/10 group-hover:text-primary transition-all shadow-inner" style={{ color }}>
         {icon}
       </div>
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">{label}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
+      <div className="min-w-0 relative z-10">
+        <p className="text-sm font-bold text-slate-800 tracking-tight transition-colors group-hover:text-primary">{label}</p>
+        <p className="text-[10px] text-slate-600 font-medium">{description}</p>
+      </div>
+      <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity transform group-hover:translate-x-1 duration-300">
+        <ArrowRight className="h-4 w-4 text-primary" />
       </div>
     </button>
   );
 }
 
-function ServiceIcon({ slug, color }: { slug: string; color: string }) {
-  const props = { className: "h-4 w-4", style: { color } };
+function ServiceIcon({ slug, color, size = 16 }: { slug: string; color: string; size?: number }) {
+  const props = { size, style: { color } };
   switch (slug) {
     case "voice-telecaller": return <Phone {...props} />;
     case "voice-receptionist": return <PhoneIncoming {...props} />;
@@ -586,3 +551,13 @@ function ServiceIcon({ slug, color }: { slug: string; color: string }) {
     default: return <Package {...props} />;
   }
 }
+
+function getActivityIcon(type: string) {
+  switch (type) {
+    case "call": return <Phone className="h-4 w-4" />;
+    case "campaign": return <Zap className="h-4 w-4" />;
+    case "whatsapp": return <MessageSquare className="h-4 w-4" />;
+    default: return <Activity className="h-4 w-4" />;
+  }
+}
+

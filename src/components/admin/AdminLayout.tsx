@@ -50,7 +50,7 @@ function AdminLayoutInner() {
   }, [user, fetchUnreadCount]);
 
   return (
-    <div className="min-h-screen bg-muted/40">
+    <div className="min-h-screen bg-mesh">
       <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <AdminHeader
         onMenuClick={() => setSidebarOpen(true)}

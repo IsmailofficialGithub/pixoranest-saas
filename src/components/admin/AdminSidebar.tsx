@@ -52,34 +52,29 @@ export default function AdminSidebar({ open, onClose }: AdminSidebarProps) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-60 flex-col bg-card shadow-sm transition-transform duration-300 ease-in-out",
-          "md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-60 flex-col bg-sidebar border-r border-sidebar-border transition-transform duration-300 md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Brand */}
-        <div className="flex items-center justify-between px-5 py-5 border-b">
-          <div className="flex items-center gap-2 min-w-0">
-            {logo ? (
-              <img
-                src={logo}
-                alt={admin?.company_name || "Logo"}
-                className="h-8 w-auto max-w-[100px] object-contain"
-              />
-            ) : (
-              <span className="font-bold text-lg text-foreground truncate">
-                {admin?.company_name || "Admin Portal"}
-              </span>
-            )}
+        <div className="flex items-center justify-between px-6 py-6 border-b border-white/5 min-h-[80px]">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-foreground shadow-lg shadow-black/20 shrink-0 border border-white/10">
+              <Package className="h-6 w-6 text-white" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xl font-black text-white tracking-tighter leading-none">PIXORA</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1 leading-none">ADMIN NEST</span>
+            </div>
           </div>
-          <button onClick={onClose} className="md:hidden p-1 rounded hover:bg-muted">
-            <X className="h-5 w-5 text-muted-foreground" />
+          <button onClick={onClose} className="md:hidden p-2 rounded-full hover:bg-white/10 transition-colors">
+            <X className="h-5 w-5 text-white" />
           </button>
         </div>
         <p className="px-5 pt-2 text-xs text-muted-foreground">Admin Portal</p>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1 custom-scrollbar">
           {navItems.map((item) => {
             const active = isActive(item.path);
             return (
@@ -89,30 +84,18 @@ export default function AdminSidebar({ open, onClose }: AdminSidebarProps) {
                 end={item.path === "/admin"}
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-4 py-3 md:py-2.5 text-sm font-medium transition-colors min-h-[44px]",
+                  "group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
                   active
-                    ? "text-white"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "text-white shadow-lg shadow-primary/10"
+                    : "text-slate-200 hover:text-white hover:bg-white/5"
                 )}
-                style={{
-                  backgroundColor: active ? primaryColor : undefined,
-                  ...((!active)
-                    ? {}
-                    : {}),
-                }}
-                onMouseEnter={(e) => {
-                  if (!active) {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = `${primaryColor}15`;
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!active) {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = "";
-                  }
-                }}
+                style={active ? { backgroundColor: primaryColor || "#304f9f" } : undefined}
               >
-                <item.icon className="h-4 w-4 shrink-0" />
-                <span>{item.title}</span>
+                <item.icon className={cn(
+                  "h-5 w-5 shrink-0 transition-transform group-hover:scale-110",
+                  active ? "text-white" : "text-slate-300 group-hover:text-white"
+                )} />
+                <span className="truncate">{item.title}</span>
               </NavLink>
             );
           })}

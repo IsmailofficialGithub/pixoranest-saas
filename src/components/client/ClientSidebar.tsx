@@ -7,10 +7,14 @@ import {
   BarChart3,
   Package,
   X,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/contexts/ClientContext";
 import { getServicePath, getServiceIcon, getServiceLabel } from "@/lib/service-routes";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
 
 interface ClientSidebarProps {
   open: boolean;
@@ -26,7 +30,6 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
     return location.pathname.startsWith(path);
   };
 
-  // Build dynamic service nav items using shared mapping
   const serviceNavItems = assignedServices
     .map((svc) => {
       const slug = svc.service_slug;
@@ -39,7 +42,6 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
 
   const commonNavItems = [
     { title: "Service Catalog", icon: Package, path: "/client/services" },
-    // { title: "Leads", icon: Users, path: "/client/leads" },
     { title: "Analytics", icon: BarChart3, path: "/client/analytics" },
     { title: "Usage & Billing", icon: Activity, path: "/client/usage" },
     { title: "Settings", icon: Settings, path: "/client/settings" },
@@ -55,8 +57,11 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
     <>
       {/* Mobile overlay */}
       {open && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-40 bg-sidebar/60 backdrop-blur-sm md:hidden"
           onClick={onClose}
         />
       )}
@@ -64,38 +69,32 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r flex flex-col transition-transform duration-200 md:translate-x-0 md:static md:z-0",
+          "fixed inset-y-0 left-0 z-50 w-64 bg-sidebar flex flex-col transition-transform duration-300 md:translate-x-0 md:static md:z-0 border-r border-sidebar-border",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Brand header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b min-h-[65px]">
-          <div className="flex items-center gap-2.5 min-w-0">
-            {admin?.logo_url ? (
-              <img
-                src={admin.logo_url}
-                alt={admin.company_name}
-                className="h-8 w-8 rounded-md object-cover shrink-0"
-              />
-            ) : (
-              <img
-                src="/logo.png"
-                alt="Logo"
-                className="h-8 w-8 rounded-md object-contain shrink-0"
-              />
-            )}
-            <span className="font-semibold text-foreground truncate text-sm">
-              {admin?.company_name || "Client Portal"}
-            </span>
+        <div className="flex items-center justify-between px-6 py-6 border-b border-white/5 min-h-[80px]">
+          <div className="flex items-center gap-3 min-w-0">
+            <motion.div 
+              whileHover={{ rotate: 10, scale: 1.1 }}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-foreground shadow-lg shadow-black/20 shrink-0 border border-white/10"
+            >
+              <Zap className="h-6 w-6 text-white" />
+            </motion.div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xl font-black text-white tracking-tighter leading-none">PIXORA</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1 leading-none">CLIENT NEST</span>
+            </div>
           </div>
-          <button onClick={onClose} className="md:hidden p-1.5 rounded hover:bg-muted">
-            <X className="h-4 w-4" />
+          <button onClick={onClose} className="md:hidden p-2 rounded-full hover:bg-white/10 transition-colors">
+            <X className="h-5 w-5 text-white" />
           </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-          {allNavItems.map((item) => {
+        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1 custom-scrollbar">
+          {allNavItems.map((item, idx) => {
             const active = isActive(item.path);
             return (
               <NavLink
@@ -104,20 +103,41 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
                 end={item.path === "/client"}
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  "group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
                   active
-                    ? "text-white"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    ? "text-white shadow-lg shadow-primary/10"
+                    : "text-slate-200 hover:text-white hover:bg-white/5"
                 )}
-                style={active ? { backgroundColor: primaryColor } : undefined}
+                style={active ? { backgroundColor: primaryColor || "#304f9f" } : undefined}
               >
-                <item.icon className="h-4 w-4 shrink-0" />
+                <item.icon className={cn(
+                  "h-5 w-5 shrink-0 transition-transform group-hover:scale-110",
+                  active ? "text-white" : "text-slate-300 group-hover:text-white"
+                )} />
                 <span className="truncate">{item.title}</span>
+                {active && (
+                  <motion.div 
+                    layoutId="active-indicator"
+                    className="ml-auto h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_8px_white]" 
+                  />
+                )}
               </NavLink>
             );
           })}
         </nav>
+
+        {/* Support Card in Sidebar */}
+        <div className="p-4 mt-auto">
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+            <p className="text-xs font-semibold text-white mb-1">Need help?</p>
+            <p className="text-[10px] text-slate-300 mb-3 leading-relaxed">Contact your manager for any assistance.</p>
+            <Button size="sm" variant="ghost" className="w-full h-8 text-[11px] bg-primary/20 hover:bg-primary/30 text-white rounded-lg">
+              Contact Support
+            </Button>
+          </div>
+        </div>
       </aside>
     </>
   );
 }
+

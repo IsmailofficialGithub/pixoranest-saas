@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  Bell, Info, CheckCircle, AlertTriangle, AlertCircle, Loader2, Trash2,
+  Bell, Info, CheckCircle, AlertTriangle, AlertCircle, Loader2, Trash2, Sparkles,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface Notification {
   id: string;
@@ -22,11 +23,11 @@ interface Notification {
   created_at: string;
 }
 
-const typeConfig: Record<string, { icon: typeof Info; color: string }> = {
-  info: { icon: Info, color: "text-blue-500" },
-  success: { icon: CheckCircle, color: "text-green-500" },
-  warning: { icon: AlertTriangle, color: "text-yellow-500" },
-  error: { icon: AlertCircle, color: "text-destructive" },
+const typeConfig: Record<string, { icon: typeof Info; color: string; bg: string }> = {
+  info: { icon: Info, color: "text-blue-400", bg: "bg-blue-500/10" },
+  success: { icon: CheckCircle, color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  warning: { icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10" },
+  error: { icon: AlertCircle, color: "text-red-400", bg: "bg-red-500/10" },
 };
 
 export default function ClientNotificationsDropdown() {
@@ -88,7 +89,11 @@ export default function ClientNotificationsDropdown() {
         setUnreadCount((prev) => prev + 1);
         setBellShake(true);
         setTimeout(() => setBellShake(false), 1000);
-        toast({ title: n.title, description: n.message });
+        toast({ 
+          title: n.title, 
+          description: n.message,
+          variant: n.type === "error" ? "destructive" : "default"
+        });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -119,89 +124,119 @@ export default function ClientNotificationsDropdown() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-10 w-10">
-          <Bell className={`h-5 w-5 transition-transform ${bellShake ? "animate-bounce" : ""}`} />
+        <Button variant="ghost" size="icon" className="relative h-10 w-10 md:h-11 md:w-11 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all">
+          <motion.div
+            animate={bellShake ? { rotate: [0, -20, 20, -20, 20, 0] } : {}}
+            transition={{ duration: 0.5 }}
+          >
+            <Bell className="h-5 w-5 md:h-6 md:w-6" />
+          </motion.div>
           {unreadCount > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-5 min-w-5 px-1 text-[10px] bg-destructive text-destructive-foreground border-0">
+            <Badge className="absolute -top-0.5 -right-0.5 h-5 min-w-5 px-1 text-[10px] bg-primary text-white border-2 border-slate-950 flex items-center justify-center font-black">
               {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[380px] md:w-[400px] p-0">
+      <PopoverContent align="end" className="w-[380px] md:w-[420px] p-0 glass-dark border-white/10 shadow-2xl mt-2 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h4 className="text-sm font-semibold text-foreground">Notifications</h4>
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 bg-white/5">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-bold text-white tracking-tight">Signal Feed</h4>
+            <Badge variant="outline" className="bg-primary/20 border-primary/20 text-primary text-[10px] tracking-tight">{unreadCount} New</Badge>
+          </div>
           {unreadCount > 0 && (
-            <button onClick={markAllAsRead} className="text-xs text-primary hover:underline">Mark all as read</button>
+            <button onClick={markAllAsRead} className="text-[11px] font-bold text-primary hover:text-primary/80 transition-colors uppercase tracking-widest">Mark All Read</button>
           )}
         </div>
 
         {/* Filter tabs */}
-        <div className="flex gap-1 px-4 py-2 border-b">
+        <div className="flex gap-2 px-5 py-3 bg-white/[0.02] border-b border-white/10">
           {(["all", "unread"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`text-xs px-3 py-1 rounded-full transition-colors ${filter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              className={`text-[10px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-lg transition-all ${filter === f ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-slate-500 hover:text-white hover:bg-white/5"}`}
             >
-              {f === "all" ? "All" : "Unread"}
+              {f === "all" ? "Priority" : "New"}
             </button>
           ))}
         </div>
 
         {/* List */}
-        <ScrollArea className="max-h-[400px]">
-          {loading && notifications.length === 0 ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : notifications.length === 0 ? (
-            <div className="py-8 text-center">
-              <Bell className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-              <p className="text-sm text-muted-foreground">{filter === "unread" ? "No unread notifications" : "No notifications yet"}</p>
-            </div>
-          ) : (
-            notifications.map((notif) => {
-              const cfg = typeConfig[notif.type] || typeConfig.info;
-              const Icon = cfg.icon;
-              return (
-                <button
-                  key={notif.id}
-                  onClick={() => markAsRead(notif.id, notif.action_url)}
-                  className={`group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 border-b last:border-0 ${!notif.is_read ? "bg-primary/5" : ""}`}
-                >
-                  {!notif.is_read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />}
-                  <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${cfg.color}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">{notif.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{notif.message}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {formatDistanceToNow(new Date(notif.created_at), { addSuffix: true })}
-                    </p>
-                  </div>
-                  <button
-                    onClick={(e) => deleteNotification(e, notif.id)}
-                    className="opacity-0 group-hover:opacity-100 mt-1 p-1 rounded hover:bg-destructive/10 transition-opacity"
+        <ScrollArea className="max-h-[460px] custom-scrollbar">
+          <AnimatePresence mode="popLayout">
+            {loading && notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <p className="text-xs text-slate-500 font-medium">Syncing signals...</p>
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="py-16 text-center px-8">
+                <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-4">
+                  <Bell className="h-8 w-8 text-slate-700" />
+                </div>
+                <p className="text-sm font-bold text-white mb-1">Clear Horizon</p>
+                <p className="text-xs text-slate-500">{filter === "unread" ? "You've processed all incoming signals." : "No signals detected at this time."}</p>
+              </div>
+            ) : (
+              notifications.map((notif, idx) => {
+                const cfg = typeConfig[notif.type] || typeConfig.info;
+                const Icon = cfg.icon;
+                return (
+                  <motion.div
+                    key={notif.id}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ delay: idx * 0.03 }}
                   >
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                  </button>
-                </button>
-              );
-            })
-          )}
+                    <button
+                      onClick={() => markAsRead(notif.id, notif.action_url)}
+                      className={`group relative flex w-full items-start gap-4 px-5 py-4 text-left transition-all hover:bg-white/5 border-b border-white/5 last:border-0 ${!notif.is_read ? "bg-primary/5" : ""}`}
+                    >
+                      <div className={`mt-1 h-10 w-10 shrink-0 rounded-xl flex items-center justify-center border border-white/5 ${cfg.bg} transition-transform group-hover:scale-110`}>
+                        <Icon className={`h-5 w-5 ${cfg.color}`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <p className={`text-sm font-bold tracking-tight ${notif.is_read ? "text-slate-300" : "text-white"}`}>{notif.title}</p>
+                          {!notif.is_read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />}
+                        </div>
+                        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed mb-2">{notif.message}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                            {formatDistanceToNow(new Date(notif.created_at), { addSuffix: true })}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => deleteNotification(e, notif.id)}
+                        className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-500/10 transition-all text-slate-600 hover:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </button>
+                  </motion.div>
+                );
+              })
+            )}
+          </AnimatePresence>
         </ScrollArea>
 
         {/* Footer */}
-        <div className="border-t px-4 py-2">
-          <button
+        <div className="bg-white/5 p-4 flex items-center justify-center border-t border-white/10">
+          <Button
+            variant="ghost"
             onClick={() => { setOpen(false); navigate("/client/notifications"); }}
-            className="w-full text-center text-xs text-primary hover:underline"
+            className="w-full h-10 text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 rounded-xl gap-2"
           >
-            View all notifications
-          </button>
+            <Sparkles className="h-4 w-4 text-primary" />
+            Launch Notification Center
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
   );
 }
+

@@ -317,36 +317,36 @@ export default function UsageBillingPage() {
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
+        <Card className="bg-white border-slate-200/60 shadow-sm transition-all hover:shadow-md">
           <CardContent className="p-6">
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 rounded-lg bg-primary/10"><Activity className="h-5 w-5 text-primary" /></div>
-              <span className="text-sm text-muted-foreground">Total Usage</span>
+              <span className="text-sm font-bold text-slate-500">Total Usage</span>
             </div>
-            <p className="text-3xl font-bold text-foreground">{totalUsage.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Units across all services</p>
+            <p className="text-3xl font-black text-slate-900">{totalUsage.toLocaleString()}</p>
+            <p className="text-xs text-slate-400 mt-1 font-medium">Units across all services</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="bg-white border-slate-200/60 shadow-sm transition-all hover:shadow-md">
           <CardContent className="p-6">
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 rounded-lg bg-green-500/10"><DollarSign className="h-5 w-5 text-green-600" /></div>
-              <span className="text-sm text-muted-foreground">Estimated Cost</span>
+              <span className="text-sm font-bold text-slate-500">Estimated Cost</span>
             </div>
-            <p className="text-3xl font-bold text-foreground">₹{totalCost.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">This month so far</p>
+            <p className="text-3xl font-black text-slate-900">₹{totalCost.toLocaleString()}</p>
+            <p className="text-xs text-slate-400 mt-1 font-medium">This month so far</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="bg-white border-slate-200/60 shadow-sm transition-all hover:shadow-md">
           <CardContent className="p-6">
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 rounded-lg bg-blue-500/10"><FileText className="h-5 w-5 text-blue-600" /></div>
-              <span className="text-sm text-muted-foreground">Pending Invoices</span>
+              <span className="text-sm font-bold text-slate-500">Pending Invoices</span>
             </div>
-            <p className="text-3xl font-bold text-foreground">
+            <p className="text-3xl font-black text-slate-900">
               {invoices.filter(i => i.status === "sent" || i.status === "overdue").length}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Awaiting payment</p>
+            <p className="text-xs text-slate-400 mt-1 font-medium">Awaiting payment</p>
           </CardContent>
         </Card>
       </div>
@@ -363,34 +363,34 @@ export default function UsageBillingPage() {
               const remaining = Math.max(0, svc.usage_limit - svc.usage_consumed);
               const resetLabel = svc.reset_period || "never";
               return (
-                <Card key={svc.id}>
+                <Card key={svc.id} className="bg-white border-slate-200/60 shadow-sm transition-all hover:shadow-md">
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">{svc.service_name}</CardTitle>
-                      <Badge variant="secondary" className="text-xs">{svc.service_category}</Badge>
+                      <CardTitle className="text-base text-slate-800 font-bold">{svc.service_name}</CardTitle>
+                      <Badge variant="outline" className="text-xs bg-primary/5 border-primary/10 text-primary">{svc.service_category}</Badge>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Usage</span>
-                      <span className={`font-semibold ${usageColor(pct)}`}>{pct}%</span>
+                      <span className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Usage</span>
+                      <span className={`font-black ${usageColor(pct)}`}>{pct}%</span>
                     </div>
                     <Progress value={Math.min(pct, 100)} className={`h-2 ${progressColor(pct)}`} />
                     <div className="grid grid-cols-3 gap-2 text-center text-xs">
                       <div>
-                        <p className="font-semibold text-foreground">{svc.usage_consumed}</p>
-                        <p className="text-muted-foreground">Used</p>
+                        <p className="font-bold text-slate-800">{svc.usage_consumed}</p>
+                        <p className="text-slate-500 text-[10px]">Used</p>
                       </div>
                       <div>
-                        <p className="font-semibold text-foreground">{svc.usage_limit}</p>
-                        <p className="text-muted-foreground">Limit</p>
+                        <p className="font-bold text-slate-800">{svc.usage_limit}</p>
+                        <p className="text-slate-500 text-[10px]">Limit</p>
                       </div>
                       <div>
-                        <p className="font-semibold text-foreground">{remaining}</p>
-                        <p className="text-muted-foreground">Left</p>
+                        <p className="font-bold text-slate-800">{remaining}</p>
+                        <p className="text-slate-500 text-[10px]">Left</p>
                       </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">Resets: {resetLabel}</div>
+                    <div className="text-[10px] text-slate-400 font-medium">Resets: {resetLabel}</div>
                     {pct >= 80 && (
                       <Button
                         size="sm"
