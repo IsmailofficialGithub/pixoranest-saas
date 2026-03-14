@@ -123,13 +123,13 @@ export default function Login() {
         <div className="mb-8 flex flex-col items-center gap-4">
           <motion.div 
             whileHover={{ scale: 1.05 }}
-            className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-blue-600 shadow-xl shadow-primary/20"
+            className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl shadow-primary/20 overflow-hidden p-2"
           >
-            <Sparkles className="h-8 w-8 text-white" />
+            <img src="/logo.png" alt="PIXORA" className="h-full w-full object-contain" />
           </motion.div>
           <div className="text-center">
-            <h1 className="text-3xl font-bold tracking-tight text-white">Pixoranest</h1>
-            <p className="text-slate-400">Premium AI Automation</p>
+            <h1 className="text-3xl font-black tracking-tighter text-white uppercase">PIXORA</h1>
+            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em]">Premium AI Automation</p>
           </div>
         </div>
 

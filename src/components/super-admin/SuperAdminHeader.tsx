@@ -32,10 +32,14 @@ export default function SuperAdminHeader({ onMenuClick }: SuperAdminHeaderProps)
 
   return (
     <header className="fixed top-0 right-0 left-0 md:left-60 z-30 flex h-16 items-center justify-between border-b border-white/5 bg-sidebar backdrop-blur-xl px-4 md:px-6 shadow-sm shadow-black/20">
-      {/* Left: hamburger on mobile */}
-      <Button variant="ghost" size="icon" className="md:hidden text-white" onClick={onMenuClick}>
-        <Menu className="h-5 w-5" />
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" className="md:hidden text-white" onClick={onMenuClick}>
+          <Menu className="h-5 w-5" />
+        </Button>
+        <div className="md:hidden flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white/5 border border-white/10 shrink-0">
+          <img src="/logo.png" alt="PIXORA" className="h-full w-full object-contain p-0.5" />
+        </div>
+      </div>
       <div className="hidden md:block" />
 
       {/* Center: search */}

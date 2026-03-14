@@ -14,10 +14,9 @@ import ClientLayout from "./components/client/ClientLayout";
 import ClientDashboardHome from "./pages/client/ClientDashboardHome";
 import VoiceAgentPage from "./pages/client/VoiceAgentPage";
 import LeadsPage from "./pages/client/LeadsPage";
-import VoiceTelecallerPage from "./pages/client/VoiceTelecallerPage";
+import CallOrbitorPage from "./pages/client/CallOrbitorPage";
 import CampaignDetailPage from "./pages/client/CampaignDetailPage";
 import CallLogsPage from "./pages/client/CallLogsPage";
-import VoiceReceptionistPage from "./pages/client/VoiceReceptionistPage";
 import WhatsAppPage from "./pages/client/WhatsAppPage";
 import SocialMediaPage from "./pages/client/SocialMediaPage";
 import UsageBillingPage from "./pages/client/UsageBillingPage";
@@ -29,7 +28,11 @@ import InstallPage from "./pages/client/InstallPage";
 import ClientAnalyticsPage from "./pages/client/ClientAnalyticsPage";
 import ServiceCatalogPage from "./pages/client/ServiceCatalogPage";
 import EmailMarketingPage from "./pages/client/EmailMarketingPage";
+import AIConfigurationPage from "./pages/client/AIConfigurationPage";
+import LiveChatPage from "./pages/client/LiveChatPage";
+import LandingPageBuilder from "./pages/client/LandingPageBuilder";
 import NotFound from "./pages/NotFound";
+import FloatingChatWidget from "./components/chat/FloatingChatWidget";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,10 +83,10 @@ const App = () => (
               }
             >
               <Route index element={<ClientDashboardHome />} />
-              <Route path="voice-telecaller" element={<VoiceTelecallerPage />} />
+              <Route path="voice-telecaller" element={<CallOrbitorPage />} />
               <Route path="voice-telecaller/calls" element={<CallLogsPage />} />
               <Route path="voice-telecaller/campaigns/:campaignId" element={<CampaignDetailPage />} />
-              <Route path="voice-receptionist" element={<NotFound />} />
+              <Route path="voice-receptionist" element={<CallOrbitorPage />} />
               <Route path="inbound" element={<InboundServicePage />} />
               <Route path="voice-agent" element={<VoiceAgentPage />} />
               <Route path="whatsapp" element={<WhatsAppPage />} />
@@ -97,9 +100,13 @@ const App = () => (
               <Route path="install" element={<InstallPage />} />
               <Route path="analytics" element={<ClientAnalyticsPage />} />
               <Route path="services" element={<ServiceCatalogPage />} />
+              <Route path="ai-config" element={<AIConfigurationPage />} />
+              <Route path="live-chat" element={<LiveChatPage />} />
+              <Route path="landing-page-builder" element={<LandingPageBuilder />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <FloatingChatWidget />
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

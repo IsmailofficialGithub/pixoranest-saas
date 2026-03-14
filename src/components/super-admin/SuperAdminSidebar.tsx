@@ -48,14 +48,13 @@ export default function SuperAdminSidebar({ open, onClose }: SuperAdminSidebarPr
         )}
       >
         {/* Brand */}
-        {/* Brand header */}
         <div className="flex items-center justify-between px-6 py-6 border-b border-white/5 min-h-[80px]">
           <div className="flex items-center gap-3 min-w-0">
             <motion.div 
-              whileHover={{ rotate: 10, scale: 1.1 }}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-foreground shadow-lg shadow-black/20 shrink-0 border border-white/10"
+              whileHover={{ rotate: 5, scale: 1.05 }}
+              className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white/5 shadow-lg shadow-black/20 shrink-0 border border-white/10"
             >
-              <Zap className="h-6 w-6 text-white" />
+              <img src="/logo.png" alt="PIXORA" className="h-full w-full object-contain p-1" />
             </motion.div>
             <div className="flex flex-col min-w-0">
               <span className="text-xl font-black text-white tracking-tighter leading-none">PIXORA</span>

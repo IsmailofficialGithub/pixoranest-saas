@@ -181,7 +181,10 @@ export default function DashboardHome() {
             Platform overview and high-level network monitoring.
           </p>
         </div>
-        <div className="shrink-0 text-right z-10 hidden sm:block">
+        <div className="shrink-0 flex flex-col items-center md:items-end z-10 hidden sm:flex">
+          <div className="h-16 w-16 mb-2 flex items-center justify-center overflow-hidden rounded-2xl bg-white shadow-xl shadow-primary/10 border border-primary/5">
+            <img src="/logo.png" alt="PIXORA" className="h-full w-full object-contain p-1" />
+          </div>
           <p className="text-4xl font-black text-primary tabular-nums tracking-tighter">PIXORA</p>
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-1">NEST CONTROL</p>
         </div>

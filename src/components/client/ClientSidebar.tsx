@@ -9,6 +9,8 @@ import {
   X,
   Sparkles,
   Zap,
+  MessageSquare,
+  Layout,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/contexts/ClientContext";
@@ -41,6 +43,9 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
     .filter(Boolean) as { title: string; icon: React.ElementType; path: string }[];
 
   const commonNavItems = [
+    { title: "Live Chat", icon: MessageSquare, path: "/client/live-chat" },
+    { title: "Landing Page Builder", icon: Layout, path: "/client/landing-page-builder" },
+    { title: "AI Configuration", icon: Sparkles, path: "/client/ai-config" },
     { title: "Service Catalog", icon: Package, path: "/client/services" },
     { title: "Analytics", icon: BarChart3, path: "/client/analytics" },
     { title: "Usage & Billing", icon: Activity, path: "/client/usage" },
@@ -73,14 +78,13 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        {/* Brand header */}
         <div className="flex items-center justify-between px-6 py-6 border-b border-white/5 min-h-[80px]">
           <div className="flex items-center gap-3 min-w-0">
             <motion.div 
-              whileHover={{ rotate: 10, scale: 1.1 }}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-foreground shadow-lg shadow-black/20 shrink-0 border border-white/10"
+              whileHover={{ rotate: 5, scale: 1.05 }}
+              className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white/5 shadow-lg shadow-black/20 shrink-0 border border-white/10"
             >
-              <Zap className="h-6 w-6 text-white" />
+              <img src="/logo.png" alt="PIXORA" className="h-full w-full object-contain p-1" />
             </motion.div>
             <div className="flex flex-col min-w-0">
               <span className="text-xl font-black text-white tracking-tighter leading-none">PIXORA</span>
