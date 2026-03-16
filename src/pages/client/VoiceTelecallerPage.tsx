@@ -123,8 +123,19 @@ export default function VoiceTelecallerPage() {
 
   async function fetchBotStatus() {
     if (!client) return;
-    // Assume bot is active globally logic for this tier, or check workflow instances
-    setHasBot(true);
+    try {
+      const { data, error } = await supabase
+        .from('outboundagents')
+        .select('id, provider_agent_id, provider_from_number_id')
+        .eq('owner_user_id', client.user_id)
+        .maybeSingle();
+      
+      if (error) throw error;
+      setHasBot(!!data && !!data.provider_agent_id && !!data.provider_from_number_id);
+    } catch (err) {
+      console.error("Failed to check bot status:", err);
+      setHasBot(false);
+    }
   }
 
   async function fetchStats() {
@@ -413,7 +424,7 @@ export default function VoiceTelecallerPage() {
                             {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => {
+                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="View Details" onClick={() => {
                               setSelectedCallData({
                                 name: lead.name,
                                 phone: lead.phone,
@@ -423,8 +434,7 @@ export default function VoiceTelecallerPage() {
                               });
                               setDetailsModalOpen(true);
                             }}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
+                              <Eye className="h-4 w-4" />
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -477,7 +487,7 @@ export default function VoiceTelecallerPage() {
                             {formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => {
+                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="View Details" onClick={() => {
                               setSelectedCallData({
                                 name: call.contact_name,
                                 phone: call.phone_number,
@@ -487,8 +497,7 @@ export default function VoiceTelecallerPage() {
                               });
                               setDetailsModalOpen(true);
                             }}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
+                              <Eye className="h-4 w-4" />
                             </Button>
                           </TableCell>
                         </TableRow>

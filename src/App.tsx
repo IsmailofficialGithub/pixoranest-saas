@@ -15,6 +15,8 @@ import ClientDashboardHome from "./pages/client/ClientDashboardHome";
 import VoiceAgentPage from "./pages/client/VoiceAgentPage";
 import LeadsPage from "./pages/client/LeadsPage";
 import CallOrbitorPage from "./pages/client/CallOrbitorPage";
+import VoiceTelecallerPage from "./pages/client/VoiceTelecallerPage";
+import VoiceReceptionistPage from "./pages/client/VoiceReceptionistPage";
 import CampaignDetailPage from "./pages/client/CampaignDetailPage";
 import CallLogsPage from "./pages/client/CallLogsPage";
 import WhatsAppPage from "./pages/client/WhatsAppPage";
@@ -83,10 +85,10 @@ const App = () => (
               }
             >
               <Route index element={<ClientDashboardHome />} />
-              <Route path="voice-telecaller" element={<CallOrbitorPage />} />
+              <Route path="voice-telecaller" element={<VoiceTelecallerPage />} />
               <Route path="voice-telecaller/calls" element={<CallLogsPage />} />
               <Route path="voice-telecaller/campaigns/:campaignId" element={<CampaignDetailPage />} />
-              <Route path="voice-receptionist" element={<CallOrbitorPage />} />
+              <Route path="voice-receptionist" element={<VoiceReceptionistPage />} />
               <Route path="inbound" element={<InboundServicePage />} />
               <Route path="voice-agent" element={<VoiceAgentPage />} />
               <Route path="whatsapp" element={<WhatsAppPage />} />

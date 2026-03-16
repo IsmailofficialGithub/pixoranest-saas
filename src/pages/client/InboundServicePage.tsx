@@ -148,39 +148,18 @@ export default function InboundServicePage() {
   const activeNum = assignedNumbers.find(n => n.id === selectedNumId);
   const isBotReady = activeNum?.provider_id && activeNum?.provider_bot_name;
 
-  if (!isBotReady) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6">
-        <div className="bg-destructive/5 rounded-full p-6 mb-6">
-          <Bot className="h-16 w-16 text-destructive" />
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Bot Configuration Incomplete</h2>
-        <p className="text-muted-foreground max-w-md mb-8">
-          The inbound number <strong>{activeNum?.phone_number}</strong> is not fully configured by the administrator (missing Provider Agent ID or Bot Name).
-          Please contact your administrator to complete the setup.
-        </p>
-        <div className="flex gap-4">
-          <Button variant="outline" onClick={fetchInitialData}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Refresh Status
-          </Button>
-          <Select value={selectedNumId || ""} onValueChange={setSelectedNumId}>
-            <SelectTrigger className="w-[200px]">
-              <PhoneIncoming className="mr-2 h-4 w-4 text-primary" />
-              <SelectValue placeholder="Select Number" />
-            </SelectTrigger>
-            <SelectContent>
-              {assignedNumbers.map(n => (
-                <SelectItem key={n.id} value={n.id}>{n.phone_number}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+        {/* Configuration Warning Banner */}
+        {!isBotReady && (
+          <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-2xl p-4 flex items-center gap-3 mb-6">
+            <Bot className="h-6 w-6 shrink-0" />
+            <div>
+              <p className="text-sm font-bold">Bot Configuration Incomplete</p>
+              <p className="text-xs opacity-80">This inbound number setup is missing provider agent ID or bot name coordinates. Contact your administrator to complete the configuration.</p>
+            </div>
+          </div>
+        )}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
