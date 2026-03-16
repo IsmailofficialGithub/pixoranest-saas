@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -26,15 +27,202 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useClient } from "@/contexts/ClientContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useEffect } from "react";
+import { toast } from "sonner";
 
 export default function AIConfigurationPage() {
   const { primaryColor } = useClient();
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => setIsSaving(false), 1500);
+  // Chatbot State
+  const [chatbot, setChatbot] = useState<any>(null);
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [temperature, setTemperature] = useState(0.7);
+
+  // Knowledge State
+  const [faqs, setFaqs] = useState<any[]>([]);
+  const [newQuestion, setNewQuestion] = useState("");
+  const [newAnswer, setNewAnswer] = useState("");
+  const [isAddingFaq, setIsAddingFaq] = useState(false);
+  const [activeTab, setActiveTab] = useState("brain");
+
+  useEffect(() => {
+    fetchChatbotConfig();
+  }, []);
+
+  const fetchChatbotConfig = async () => {
+    try {
+      setIsLoading(true);
+      console.log("Starting fetchChatbotConfig...");
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.warn("fetchChatbotConfig: No authenticated user found.");
+        return;
+      }
+      console.log("Authenticated User ID:", user.id);
+
+      // 1. Get Client ID for this user
+      const { data: clientData } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!clientData) {
+        console.warn("fetchChatbotConfig: No client profile found for user_id:", user.id);
+        toast.error("Could not load client profile.");
+        setIsLoading(false);
+        return;
+      }
+      console.log("Client ID fetched successfully:", clientData.id);
+
+      // 2. Get existing chatbot or create a default one
+      const { data: bot, error } = await supabase
+        .from('ai_chatbots')
+        .select('*')
+        .eq('client_id', clientData.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("fetchChatbotConfig: ai_chatbots fetch error:", error);
+        throw error;
+      }
+      console.log("Existing bot row result:", bot);
+
+      if (!bot) {
+        console.log("No chatbot found. Instantiating default bot configuration...");
+        // Create Default Bot configuration automatically
+        const { data: inserted, error: createError } = await supabase
+          .from('ai_chatbots')
+          .insert([{
+             client_id: clientData.id,
+             name: "Pixora AI Assistant",
+             system_prompt: "You are a helpful and professional real estate or service assistant. Be kinds and concise.",
+             temperature: 0.7
+          }])
+          .select('*');
+        
+        if (createError) {
+          console.error("fetchChatbotConfig: Failed to insert default bot:", createError);
+          throw createError;
+        }
+
+        if (inserted && inserted.length > 0) {
+          const newBot = inserted[0];
+          console.log("Default chatbot initialized successfully:", newBot.id);
+          setChatbot(newBot);
+          setSystemPrompt(newBot.system_prompt || "");
+          setTemperature(Number(newBot.temperature) || 0.7);
+          fetchKnowledge(newBot.id);
+        } else {
+          console.error("fetchChatbotConfig: Insert succeeded but returned empty result array.");
+          toast.error("Failed to initialize default AI chatbot.");
+        }
+      } else {
+        console.log("Loading existing chatbot setup:", bot.id);
+        setChatbot(bot);
+        setSystemPrompt(bot.system_prompt || "");
+        setTemperature(Number(bot.temperature) || 0.7);
+        fetchKnowledge(bot.id);
+      }
+    } catch (err: any) {
+      console.error("Error fetching bot configuration:", err);
+      toast.error("Failed to load AI settings.");
+    } finally {
+      console.log("fetchChatbotConfig sequence completed.");
+      setIsLoading(false);
+    }
   };
+
+  const fetchKnowledge = async (botId: string) => {
+    const { data: knowledgeDocs } = await supabase
+      .from('ai_knowledge')
+      .select('*')
+      .eq('chatbot_id', botId)
+      .eq('source_type', 'qa')
+      .order('created_at', { ascending: false });
+    
+    setFaqs(knowledgeDocs || []);
+  };
+
+  const handleSave = async () => {
+    if (!chatbot) return;
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('ai_chatbots')
+        .update({
+          system_prompt: systemPrompt,
+          temperature: temperature
+        })
+        .eq('id', chatbot.id);
+
+      if (error) throw error;
+      toast.success("AI Configuration synchronized successfully!");
+    } catch (err: any) {
+      console.error("Save Error:", err);
+      toast.error("Failed to save changes.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddFaq = async () => {
+    if (!chatbot) {
+      toast.error("AI chatbot configuration is missing or loading.");
+      return;
+    }
+    if (!newQuestion.trim() || !newAnswer.trim()) {
+      toast.error("Both question and answer are required keywords.");
+      return;
+    }
+
+    try {
+      console.log("Adding FAQ snippet bound to bot:", chatbot.id);
+      const combinedContent = `Q: ${newQuestion.trim()}\nA: ${newAnswer.trim()}`;
+      const { data, error } = await supabase
+        .from('ai_knowledge')
+        .insert([{
+          chatbot_id: chatbot.id,
+          content: combinedContent,
+          source_type: 'qa',
+          title: `FAQ: ${newQuestion.trim().substring(0, 30)}...`
+        }] as any)
+        .select('*');
+      
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setFaqs(prev => [data[0], ...prev]);
+      }
+      setNewQuestion("");
+      setNewAnswer("");
+      toast.success("FAQ knowledge item added.");
+    } catch (err: any) {
+      toast.error("Failed to add FAQ.");
+    }
+  };
+
+  const handleDeleteKnowledge = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('ai_knowledge')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+
+      setFaqs(prev => prev.filter(item => item.id !== id));
+      toast.success("Knowledge snippet removed.");
+    } catch (err) {
+      toast.error("Failed to delete item.");
+    }
+  };
+
+  if (isLoading) {
+    return <div className="flex h-96 items-center justify-center text-primary font-bold">Synchronizing Brain...</div>;
+  }
 
   return (
     <div className="space-y-8 pb-20">
@@ -60,19 +248,21 @@ export default function AIConfigurationPage() {
             Configure your AI's personality, knowledge base, and connections across all channels.
           </p>
           <div className="flex flex-wrap gap-3 pt-2">
-            <Button className="rounded-xl shadow-lg shadow-primary/20 font-bold" style={{ backgroundColor: primaryColor }} onClick={handleSave}>
+            <Button 
+                className="rounded-xl shadow-lg shadow-primary/20 font-bold" 
+                style={{ backgroundColor: primaryColor }} 
+                onClick={handleSave}
+                disabled={isSaving}
+            >
               {isSaving ? "Synchronizing..." : "Save All Changes"}
-            </Button>
-            <Button variant="outline" className="rounded-xl border-slate-200 font-bold bg-white/50 backdrop-blur-sm">
-              Live Preview
             </Button>
           </div>
         </div>
       </motion.div>
 
       {/* Main Configuration Tabs */}
-      <Tabs defaultValue="brain" className="space-y-8">
-        <TabsList className="bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-primary/10 w-full md:w-auto h-auto grid grid-cols-2 md:grid-cols-4 gap-1 shadow-sm">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
+        <TabsList className="bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-primary/10 w-full md:w-auto h-auto grid grid-cols-2 gap-1 shadow-sm">
           <TabsTrigger value="brain" className="rounded-xl px-4 py-3 data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-primary font-bold">
             <Sparkles className="w-4 h-4 mr-2" />
             AI Brain
@@ -81,19 +271,12 @@ export default function AIConfigurationPage() {
             <BookOpen className="w-4 h-4 mr-2" />
             Knowledge
           </TabsTrigger>
-          <TabsTrigger value="connections" className="rounded-xl px-4 py-3 data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-primary font-bold">
-            <Database className="w-4 h-4 mr-2" />
-            Connections
-          </TabsTrigger>
-          <TabsTrigger value="channels" className="rounded-xl px-4 py-3 data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-primary font-bold">
-            <Settings2 className="w-4 h-4 mr-2" />
-            Channels
-          </TabsTrigger>
         </TabsList>
 
         <AnimatePresence mode="wait">
           {/* AI Brain Tab */}
-          <TabsContent value="brain">
+          {activeTab === "brain" && (
+            <TabsContent value="brain" key="brain" forceMount>
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -112,127 +295,104 @@ export default function AIConfigurationPage() {
                   <div className="space-y-3">
                     <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Global AI Personality</Label>
                     <Textarea 
+                      value={systemPrompt}
+                      onChange={(e) => setSystemPrompt(e.target.value)}
                       placeholder="e.g., You are a helpful and professional real estate assistant for Pixoranest..."
-                      className="min-h-[200px] bg-slate-50 border-slate-100 rounded-2xl p-4 focus:ring-primary/20 focus:border-primary/30 transition-all text-slate-700"
+                      className="min-h-[200px] bg-slate-100/50 border-black focus-visible:ring-2 focus-visible:ring-primary/20 rounded-2xl p-4 transition-all text-slate-700 font-medium"
                     />
                   </div>
                   <div className="grid gap-4 md:grid-cols-3">
-                    <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10">
-                      <Label className="text-[10px] font-bold text-primary uppercase tracking-widest block mb-2">Creativity</Label>
-                      <Progress value={45} className="h-1.5" />
-                      <div className="flex justify-between mt-2 text-[10px] font-bold text-slate-400">
-                        <span>PRECISE</span>
-                        <span>CREATIVE</span>
+                    {/* Strict & Precise */}
+                    <div 
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                        temperature === 0.2 
+                          ? "bg-primary border-primary shadow-lg shadow-primary/20" 
+                          : "bg-slate-50 border-slate-100 hover:border-primary/20 hover:bg-slate-50/80"
+                      }`} 
+                      onClick={() => setTemperature(0.2)}
+                    >
+                      <Label className={`text-[10px] font-bold uppercase tracking-widest block mb-2 ${
+                        temperature === 0.2 ? "text-white" : "text-slate-700"
+                      }`}>Strict & Precise</Label>
+                      <div className={`h-1.5 w-full rounded-full overflow-hidden ${temperature === 0.2 ? "bg-white/20" : "bg-slate-200"}`}>
+                        <div className={`h-full ${temperature === 0.2 ? "bg-white" : "bg-primary"}`} style={{ width: '20%' }} />
+                      </div>
+                      <div className={`flex justify-between mt-2 text-[10px] font-bold ${
+                        temperature === 0.2 ? "text-white/80" : "text-slate-400"
+                      }`}>
+                        <span>{temperature === 0.2 ? "★ Selected" : "Precise"}</span>
                       </div>
                     </div>
-                    <div className="p-4 rounded-2xl bg-secondary/5 border border-secondary/10">
-                      <Label className="text-[10px] font-bold text-secondary uppercase tracking-widest block mb-2">Friendliness</Label>
-                      <Progress value={85} className="h-1.5" />
-                      <div className="flex justify-between mt-2 text-[10px] font-bold text-slate-400">
-                        <span>STRICT</span>
-                        <span>WARM</span>
+
+                    {/* Balanced & Professional */}
+                    <div 
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                        temperature === 0.6 
+                          ? "bg-slate-800 border-slate-800 shadow-lg shadow-slate-800/20" 
+                          : "bg-slate-50 border-slate-100 hover:border-slate-300 hover:bg-slate-50/80"
+                      }`} 
+                      onClick={() => setTemperature(0.6)}
+                    >
+                      <Label className={`text-[10px] font-bold uppercase tracking-widest block mb-2 ${
+                        temperature === 0.6 ? "text-white" : "text-slate-700"
+                      }`}>Balanced & Professional</Label>
+                      <div className={`h-1.5 w-full rounded-full overflow-hidden ${temperature === 0.6 ? "bg-white/20" : "bg-slate-200"}`}>
+                        <div className={`h-full ${temperature === 0.6 ? "bg-white" : "bg-slate-800"}`} style={{ width: '60%' }} />
+                      </div>
+                      <div className={`flex justify-between mt-2 text-[10px] font-bold ${
+                        temperature === 0.6 ? "text-white/80" : "text-slate-400"
+                      }`}>
+                        <span>{temperature === 0.6 ? "★ Selected" : "Professional"}</span>
                       </div>
                     </div>
-                    <div className="p-4 rounded-2xl bg-accent/5 border border-accent/10">
-                      <Label className="text-[10px] font-bold text-accent-foreground uppercase tracking-widest block mb-2">Verbosity</Label>
-                      <Progress value={60} className="h-1.5" />
-                      <div className="flex justify-between mt-2 text-[10px] font-bold text-slate-400">
-                        <span>SHORT</span>
-                        <span>DETAILED</span>
+
+                    {/* Creative & Warm */}
+                    <div 
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                        temperature === 0.95 
+                          ? "bg-orange-500 border-orange-500 shadow-lg shadow-orange-500/20" 
+                          : "bg-slate-50 border-slate-100 hover:border-orange-200 hover:bg-slate-50/80"
+                      }`} 
+                      onClick={() => setTemperature(0.95)}
+                    >
+                      <Label className={`text-[10px] font-bold uppercase tracking-widest block mb-2 ${
+                        temperature === 0.95 ? "text-white" : "text-slate-700"
+                      }`}>Creative & Warm</Label>
+                      <div className={`h-1.5 w-full rounded-full overflow-hidden ${temperature === 0.95 ? "bg-white/20" : "bg-slate-200"}`}>
+                        <div className={`h-full ${temperature === 0.95 ? "bg-white" : "bg-orange-500"}`} style={{ width: '95%' }} />
+                      </div>
+                      <div className={`flex justify-between mt-2 text-[10px] font-bold ${
+                        temperature === 0.95 ? "text-white/80" : "text-slate-400"
+                      }`}>
+                        <span>{temperature === 0.95 ? "★ Selected" : "Creative"}</span>
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/95 border-primary/20 shadow-xl shadow-primary/5 rounded-3xl overflow-hidden">
-                <CardHeader className="border-b border-sidebar-border/5">
-                  <CardTitle className="text-lg font-bold">Fallback Response</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-4">
-                  <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">When AI doesn't know the answer</Label>
-                  <Textarea 
-                    placeholder="I apologize, I don't have that information. Let me connect you with a specialist."
-                    className="bg-slate-50 border-slate-100 rounded-2xl"
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/95 border-primary/20 shadow-xl shadow-primary/5 rounded-3xl overflow-hidden">
-                <CardHeader className="border-b border-sidebar-border/5">
-                  <CardTitle className="text-lg font-bold">Handover Trigger</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-4">
-                  <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Keyword for human escalation</Label>
-                  <Input placeholder="talk to agent, help, human" className="bg-slate-50 border-slate-100 rounded-2xl" />
+                  <div className="flex justify-end pt-4 border-t border-sidebar-border/5">
+                    <Button 
+                      className="rounded-xl font-bold shadow-lg shadow-primary/20" 
+                      style={{ backgroundColor: primaryColor }} 
+                      onClick={handleSave}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? "Saving..." : "Save AI Brain"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
           </TabsContent>
+          )}
 
           {/* Knowledge Base Tab */}
-          <TabsContent value="knowledge">
+          {activeTab === "knowledge" && (
+            <TabsContent value="knowledge" key="knowledge" forceMount>
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               className="space-y-6"
             >
-              <div className="grid gap-6 md:grid-cols-3">
-                <Card className="bg-white/95 border-primary/20 shadow-xl shadow-primary/5 rounded-3xl overflow-hidden md:col-span-2">
-                  <CardHeader className="border-b border-sidebar-border/5">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-xl font-bold flex items-center gap-2">
-                        <BookOpen className="w-5 h-5 text-primary" />
-                        Trained Documents
-                      </CardTitle>
-                      <Button size="sm" className="rounded-xl font-bold shadow-sm" style={{ backgroundColor: primaryColor }}>
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload PDF/Doc
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    <div className="space-y-3">
-                      {[
-                        { name: "Company_Portfolio.pdf", size: "2.4 MB", date: "Mar 12, 2024" },
-                        { name: "Pricing_Plans_2024.docx", size: "1.1 MB", date: "Mar 10, 2024" },
-                        { name: "Support_Policy.pdf", size: "0.8 MB", date: "Mar 05, 2024" },
-                      ].map((doc, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-primary/30 transition-colors group">
-                          <div className="flex items-center gap-4">
-                            <div className="bg-white p-2.5 rounded-xl shadow-sm border border-slate-100 text-primary">
-                              <FileText className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold text-slate-700">{doc.name}</p>
-                              <p className="text-[10px] font-medium text-slate-400">{doc.size} • Uploaded on {doc.date}</p>
-                            </div>
-                          </div>
-                          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white/95 border-primary/20 shadow-xl shadow-primary/5 rounded-3xl overflow-hidden">
-                  <CardHeader className="border-b border-sidebar-border/5">
-                    <CardTitle className="text-lg font-bold flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-primary" />
-                      Web Scraper
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-6 space-y-4">
-                    <p className="text-xs text-slate-500">Train AI by crawling your website.</p>
-                    <Input placeholder="https://example.com" className="rounded-xl bg-slate-50 border-slate-100" />
-                    <Button variant="secondary" className="w-full rounded-xl font-bold bg-slate-100">Start Crawling</Button>
-                  </CardContent>
-                </Card>
-              </div>
-
               <Card className="bg-white/95 border-primary/20 shadow-xl shadow-primary/5 rounded-3xl overflow-hidden">
                 <CardHeader className="border-b border-sidebar-border/5">
                   <div className="flex items-center justify-between">
@@ -240,144 +400,52 @@ export default function AIConfigurationPage() {
                       <MessageSquare className="w-5 h-5 text-primary" />
                       Q&A / FAQs
                     </CardTitle>
-                    <Button variant="outline" size="sm" className="rounded-xl font-bold border-slate-200">
+                    <Button variant="outline" size="sm" className="rounded-xl font-bold border-slate-200" onClick={() => setIsAddingFaq(!isAddingFaq)}>
                       <Plus className="w-4 h-4 mr-2" />
-                      Add FAQ
+                      {isAddingFaq ? "Cancel" : "Add FAQ"}
                     </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-4">
-                  {[
-                    "Do you offer refunds outside the guarantee period?",
-                    "Can I customize the API integration?",
-                    "What happens if usage limits are exceeded?"
-                  ].map((q, idx) => (
-                    <div key={idx} className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100 space-y-2">
-                      <div className="flex justify-between items-start">
-                        <p className="text-sm font-bold text-slate-700">Q: {q}</p>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-red-500">
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <p className="text-xs text-slate-500 leading-relaxed italic">Response mapped to AI personality...</p>
-                    </div>
-                  ))}
+                  {isAddingFaq && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="p-4 rounded-2xl bg-primary/5 border border-primary/20 space-y-3 mb-4">
+                         <Label className="text-[10px] font-bold text-slate-500 uppercase">Question</Label>
+                         <Input value={newQuestion} onChange={e => setNewQuestion(e.target.value)} placeholder="e.g., Do you offer trial?" className="bg-white rounded-xl" />
+                         <Label className="text-[10px] font-bold text-slate-500 uppercase block mt-2">Answer</Label>
+                         <Textarea value={newAnswer} onChange={e => setNewAnswer(e.target.value)} placeholder="e.g., Yes, we offer 14-day trials." className="bg-white rounded-xl" />
+                         <Button className="w-full mt-2 rounded-xl" size="sm" onClick={handleAddFaq} style={{ backgroundColor: primaryColor }}>
+                             Save FAQ Knowledge
+                         </Button>
+                    </motion.div>
+                  )}
+
+                  {faqs.length === 0 ? (
+                     <div className="text-center py-6 text-xs text-slate-400">No FAQ snippets added yet. Type one above to train your AI.</div>
+                  ) : (
+                    faqs.map((q, idx) => {
+                      const lines = q.content.split('\nA: ');
+                      const question = lines[0].replace('Q: ', '');
+                      const answer = lines[1] || "";
+
+                      return (
+                        <div key={q.id} className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100 space-y-2 group transition-all hover:border-primary/20">
+                          <div className="flex justify-between items-start">
+                            <p className="text-sm font-bold text-slate-700">Q: {question}</p>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-red-500" onClick={() => handleDeleteKnowledge(q.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <p className="text-xs text-slate-500 leading-relaxed italic">{answer}</p>
+                        </div>
+                      )
+                    })
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
           </TabsContent>
+          )}
 
-          {/* Connections Tab */}
-          <TabsContent value="connections">
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="grid gap-6 md:grid-cols-2"
-            >
-              <Card className="bg-white/95 border-primary/20 shadow-xl shadow-primary/5 rounded-3xl overflow-hidden">
-                <CardHeader className="border-b border-sidebar-border/5">
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <LinkIcon className="w-5 h-5 text-primary" />
-                    Links & Funnels
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-6">
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Primary Website URL</Label>
-                    <Input placeholder="https://pixoranest.com" className="rounded-xl bg-slate-50 border-slate-100" />
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Appointment Calendar Link</Label>
-                    <Input placeholder="https://calendly.com/your-team" className="rounded-xl bg-slate-50 border-slate-100" />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/95 border-primary/20 shadow-xl shadow-primary/5 rounded-3xl overflow-hidden">
-                <CardHeader className="border-b border-sidebar-border/5">
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <Database className="w-5 h-5 text-primary" />
-                    External Database
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-6">
-                  <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 bg-white rounded-lg flex items-center justify-center border border-slate-100">
-                        <Database className="w-4 h-4 text-primary" />
-                      </div>
-                      <p className="text-sm font-bold text-slate-700">CRM Integration</p>
-                    </div>
-                    <Switch />
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Connection String (Optional)</Label>
-                    <Input type="password" placeholder="postgresql://user:pass@host:port/db" className="rounded-xl bg-slate-50 border-slate-100" />
-                    <p className="text-[10px] text-slate-400 italic font-medium">Allows AI to check lead status in real-time.</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </TabsContent>
-
-          {/* Channels Tab */}
-          <TabsContent value="channels">
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="grid gap-6 md:grid-cols-3"
-            >
-              {[
-                { 
-                  id: "chatbot", 
-                  title: "Website Chatbot", 
-                  icon: MessageSquare, 
-                  desc: "Floating bubble on your site.", 
-                  color: "#304f9f" 
-                },
-                { 
-                  id: "caller", 
-                  title: "AI Phone Caller", 
-                  icon: Phone, 
-                  desc: "Automated outbound outreach.", 
-                  color: "#e11d48" 
-                },
-                { 
-                  id: "livechat", 
-                  title: "Live Chat AI", 
-                  icon: Sparkles, 
-                  desc: "Handover to human agents.", 
-                  color: "#7c3aed" 
-                },
-              ].map((channel, idx) => (
-                <Card key={idx} className="bg-white/95 border-primary/20 shadow-xl shadow-primary/5 rounded-3xl overflow-hidden group">
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <div 
-                        className="h-12 w-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 group-hover:rotate-6"
-                        style={{ backgroundColor: `${channel.color}15`, color: channel.color }}
-                      >
-                        <channel.icon className="w-6 h-6" />
-                      </div>
-                      <Switch defaultChecked />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900 leading-none">{channel.title}</h3>
-                      <p className="text-xs text-slate-500 mt-2">{channel.desc}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" className="w-full justify-between rounded-xl hover:bg-slate-50 group/btn">
-                      <span className="text-xs font-bold text-slate-600">Advanced Settings</span>
-                      <ChevronRight className="w-4 h-4 text-slate-400 group-hover/btn:translate-x-1 transition-transform" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </motion.div>
-          </TabsContent>
         </AnimatePresence>
       </Tabs>
       

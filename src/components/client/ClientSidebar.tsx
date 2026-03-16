@@ -44,7 +44,7 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
 
   const commonNavItems = [
     { title: "Live Chat", icon: MessageSquare, path: "/client/live-chat" },
-    { title: "Landing Page Builder", icon: Layout, path: "/client/landing-page-builder" },
+    // { title: "Landing Page Builder", icon: Layout, path: "/client/landing-page-builder" },
     { title: "AI Configuration", icon: Sparkles, path: "/client/ai-config" },
     { title: "Service Catalog", icon: Package, path: "/client/services" },
     { title: "Analytics", icon: BarChart3, path: "/client/analytics" },

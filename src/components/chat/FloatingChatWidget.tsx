@@ -30,8 +30,40 @@ export default function FloatingChatWidget() {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [chatbotId, setChatbotId] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Fetch user's chatbot config on mount
+    const fetchChatbot = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: clientData } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (clientData) {
+          const { data: bot } = await supabase
+            .from('ai_chatbots')
+            .select('id')
+            .eq('client_id', clientData.id)
+            .maybeSingle();
+          
+          if (bot) {
+            setChatbotId(bot.id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch chatbot mapping:", err);
+      }
+    };
+    fetchChatbot();
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -61,7 +93,7 @@ export default function FloatingChatWidget() {
             body: {
                 userMessage: userText,
                 sessionId: sessionId,
-                chatbotId: null, // Default
+                chatbotId: chatbotId,
                 isNewSession: !sessionId
             }
         });

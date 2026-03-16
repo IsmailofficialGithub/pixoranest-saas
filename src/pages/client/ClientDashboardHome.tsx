@@ -159,21 +159,21 @@ export default function ClientDashboardHome() {
   if (assignedServices.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <motion.div 
+         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="rounded-3xl bg-white/5 p-10 border border-white/10 backdrop-blur-xl max-w-lg"
+          className="rounded-3xl bg-white p-10 border border-primary/10 shadow-xl shadow-primary/5 max-w-lg"
         >
           <div className="rounded-2xl bg-primary/10 p-6 mb-6 inline-block">
             <Package className="h-16 w-16 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-4">
+          <h1 className="text-3xl font-bold text-slate-800 mb-4">
             Hello, {profile?.full_name || profile?.email}!
           </h1>
-          <h2 className="text-xl font-semibold text-slate-200 mb-2">
+          <h2 className="text-xl font-semibold text-slate-600 mb-2">
             No services have been assigned yet
           </h2>
-          <p className="text-slate-400 mb-8 leading-relaxed">
+          <p className="text-slate-500 mb-8 leading-relaxed">
             Your dashboard is ready, but you haven't been assigned any AI services yet. 
             Contact {admin?.company_name || "your admin"} to get started.
           </p>
@@ -381,7 +381,7 @@ export default function ClientDashboardHome() {
                       {getActivityIcon(item.type)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{item.description}</p>
+                      <p className="text-sm font-semibold text-slate-800 truncate">{item.description}</p>
                       <p className="text-xs text-slate-500">
                         {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
                       </p>
@@ -397,10 +397,10 @@ export default function ClientDashboardHome() {
               </div>
             ) : (
               <div className="text-center py-16">
-                <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/10">
-                  <Activity className="h-8 w-8 text-slate-600" />
+                <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                  <Activity className="h-8 w-8 text-slate-400" />
                 </div>
-                <p className="text-lg font-bold text-white mb-1">Infrastucture Idle</p>
+                <p className="text-lg font-bold text-slate-800 mb-1">Infrastructure Idle</p>
                 <p className="text-sm text-slate-500">Global activity will appear here once sequences begin.</p>
               </div>
             )}
@@ -438,7 +438,7 @@ export default function ClientDashboardHome() {
               onClick={() => navigate("/client/leads")}
             />
             <div className="pt-4 mt-4 border-t border-white/5">
-              <Button variant="outline" className="w-full border-white/10 text-slate-300 hover:bg-white/5 rounded-xl py-6 gap-3">
+              <Button variant="outline" className="w-full border-white/10 text-black hover:bg-white/5 rounded-xl py-6 gap-3">
                 <Headphones className="h-4 w-4" />
                 Reach Technical Support
               </Button>

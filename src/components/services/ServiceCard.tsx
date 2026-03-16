@@ -134,7 +134,7 @@ export function ServiceCard({ service, primaryColor }: ServiceCardProps) {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="w-full text-xs h-10 rounded-xl border-slate-200 hover:bg-slate-50 text-slate-600 transition-all active:scale-95"
+                  className="w-full text-xs h-10 rounded-xl border-slate-200 hover:bg-black text-slate-600 transition-all active:scale-95"
                   disabled={requesting}
                   onClick={handleRequestAccess}
                 >
