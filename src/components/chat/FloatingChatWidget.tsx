@@ -165,8 +165,8 @@ export default function FloatingChatWidget() {
             <div className="bg-gradient-to-r from-primary to-blue-600 p-4 text-white flex items-center justify-between shadow-md relative z-10">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <div className="h-10 w-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border border-white/30">
-                    <Bot className="w-6 h-6 text-white" />
+                  <div className="h-10 w-10 bg-white/20  backdrop-blur-md rounded-full flex items-center justify-center border border-white/30">
+                  <img src="/logo.png" alt="Pixora Logo" className="w-10 h-10 rounded-full" />
                   </div>
                   <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-transparent rounded-full" />
                 </div>
@@ -251,15 +251,13 @@ export default function FloatingChatWidget() {
             {/* Input Area */}
             <div className="p-3 bg-white border-t border-slate-100">
               <div className="relative flex items-center bg-slate-50 border border-slate-100 rounded-2xl p-1 shadow-inner focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-all">
-                <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-primary shrink-0 rounded-xl">
-                    <Paperclip className="w-4 h-4" />
-                </Button>
+                
                 <Input 
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
                   placeholder="Ask a question..."
-                  className="w-full bg-transparent border-none focus-visible:ring-0 px-2 text-[13px] shadow-none"
+                  className="w-full bg-transparent border-black mr-1 focus-visible:ring-0 px-2 text-[13px] shadow-none"
                 />
                 <Button 
                   onClick={handleSendMessage}
