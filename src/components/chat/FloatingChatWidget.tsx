@@ -39,23 +39,35 @@ export default function FloatingChatWidget() {
     const fetchChatbot = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        
+        if (user) {
+          const { data: clientData } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle();
 
-        const { data: clientData } = await supabase
-          .from('clients')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (clientData) {
-          const { data: bot } = await supabase
+          if (clientData) {
+            const { data: bot } = await supabase
+              .from('ai_chatbots')
+              .select('id')
+              .eq('client_id', clientData.id)
+              .maybeSingle();
+            
+            if (bot) {
+              setChatbotId(bot.id);
+            }
+          }
+        } else {
+          // Public Visitor Test Fallback (Incognito Mode)
+          const { data: defaultBot } = await supabase
             .from('ai_chatbots')
             .select('id')
-            .eq('client_id', clientData.id)
+            .limit(1)
             .maybeSingle();
-          
-          if (bot) {
-            setChatbotId(bot.id);
+            
+          if (defaultBot) {
+            setChatbotId(defaultBot.id);
           }
         }
       } catch (err) {
