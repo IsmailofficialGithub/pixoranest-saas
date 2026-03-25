@@ -121,16 +121,8 @@ export default function Login() {
         className="relative z-10 w-full max-w-[400px]"
       >
         <div className="mb-8 flex flex-col items-center gap-4">
-          <motion.div 
-            whileHover={{ scale: 1.05 }}
-            className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl shadow-primary/20 overflow-hidden p-2"
-          >
-            <img src="/logo.png" alt="PIXORA" className="h-full w-full object-contain" />
-          </motion.div>
-          <div className="text-center">
-            <h1 className="text-3xl font-black tracking-tighter text-white uppercase">PIXORA</h1>
-            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.3em]">Premium AI Automation</p>
-          </div>
+
+            <img src="/logo2.png" alt="PIXORA" className="h-full w-full object-contain" />
         </div>
 
         <Card className="border-white/10 bg-slate-900/50 backdrop-blur-xl shadow-2xl">
