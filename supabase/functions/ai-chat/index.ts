@@ -33,12 +33,16 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
     // Create a Supabase client with the user's JWT so RLS policies are applied if they are logged in
     // If not logged in, this uses the anon key, which is fine for public chatbots
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     })
+    
+    // Create an Admin client bypassing RLS for writing sessions and messages safely
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
     
     // Fetch user info to track who sent the message (optional)
     const { data: { user } } = await supabase.auth.getUser()
@@ -49,11 +53,23 @@ Deno.serve(async (req) => {
         temperature: 0.7
     };
     
-    if (chatbotId) {
-        const { data: fetchedBot, error: botError } = await supabase
+    let activeChatbotId = chatbotId;
+    
+    // Auto-fallback mapping for anonymous Incognito testers missing a primary bot origin due to client RLS
+    if (!activeChatbotId) {
+        const { data: defaultBot } = await supabaseAdmin
+          .from('ai_chatbots')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+        if (defaultBot) activeChatbotId = defaultBot.id;
+    }
+
+    if (activeChatbotId) {
+        const { data: fetchedBot, error: botError } = await supabaseAdmin
           .from('ai_chatbots')
           .select('*')
-          .eq('id', chatbotId)
+          .eq('id', activeChatbotId)
           .single()
           
         if (fetchedBot) {
@@ -66,6 +82,19 @@ Deno.serve(async (req) => {
     let currentSessionId = sessionId;
 
     if (!isNewSession && currentSessionId) {
+        // Check if session is overridden by human
+        const { data: sessionInfo } = await supabaseAdmin.from('ai_chat_sessions').select('status').eq('id', currentSessionId).single();
+        
+        if (sessionInfo && sessionInfo.status === 'human') {
+             // Still save the USER's message so the human admin can see it!
+             const messageData: any = { session_id: currentSessionId, role: 'user', content: userMessage };
+             if (user) messageData.user_id = user.id;
+             await supabaseAdmin.from('ai_chat_messages').insert([messageData]);
+             
+             // Abort OpenAI processing and return empty message
+             return new Response(JSON.stringify({ message: null, sessionId: currentSessionId }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
         const { data: chatHistory } = await supabase
           .from('ai_chat_messages')
           .select('role, content')
@@ -79,12 +108,15 @@ Deno.serve(async (req) => {
         // Create new session
         const sessionData: any = { status: 'active' }
         if (user) sessionData.visitor_id = user.id
+        if (activeChatbotId) sessionData.chatbot_id = activeChatbotId
         
-        const { data: newSession, error: sessionError } = await supabase
+        const { data: newSession, error: sessionError } = await supabaseAdmin
             .from('ai_chat_sessions')
             .insert([sessionData])
             .select('id')
             .single()
+
+        if (sessionError) console.error("Session Insert Error:", sessionError);
             
         if (newSession) {
             currentSessionId = newSession.id;
@@ -100,7 +132,8 @@ Deno.serve(async (req) => {
       }
       if (user) messageData.user_id = user.id
 
-      await supabase.from('ai_chat_messages').insert([messageData])
+      const { error: msgErr } = await supabaseAdmin.from('ai_chat_messages').insert([messageData])
+      if (msgErr) console.error("Message Insert Error:", msgErr);
     }
 
     // 4. Construct messages for OpenAI
@@ -190,7 +223,8 @@ Deno.serve(async (req) => {
       }
       if (user) assistantMessageData.user_id = user.id
       
-      await supabase.from('ai_chat_messages').insert([assistantMessageData])
+      const { error: asstMsgErr } = await supabaseAdmin.from('ai_chat_messages').insert([assistantMessageData])
+      if (asstMsgErr) console.error("Asst Message Insert Error:", asstMsgErr);
     }
 
     return new Response(

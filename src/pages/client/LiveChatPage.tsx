@@ -58,14 +58,33 @@ export default function LiveChatPage() {
 
   useEffect(() => {
     fetchActiveSessions();
+    
+    // Subscribe to session changes
+    const sessionChannel = supabase.channel('sessions-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_chat_sessions' }, () => {
+         fetchActiveSessions();
+      })
+      .subscribe();
+      
+    return () => { supabase.removeChannel(sessionChannel); };
   }, []);
 
   useEffect(() => {
     if (selectedChat) {
       setSessionId(selectedChat.id);
       fetchChatMessages(selectedChat.id);
+      
+      // Subscribe to messages for this active chat
+      const msgChannel = supabase.channel(`messages-${selectedChat.id}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ai_chat_messages', filter: `session_id=eq.${selectedChat.id}` }, () => {
+           fetchChatMessages(selectedChat.id);
+        })
+        .subscribe();
+        
+      return () => { supabase.removeChannel(msgChannel); };
     } else {
       setChatMessages([]);
+      setSessionId(null);
     }
   }, [selectedChat]);
 
@@ -123,6 +142,16 @@ export default function LiveChatPage() {
       console.error("Failed to load sessions:", err);
     } finally {
       setIsInitializing(false);
+    }
+  };
+
+  const handleToggleAI = async (checked: boolean) => {
+    setIsAIActive(checked);
+    if (!selectedChat) return;
+    try {
+      await supabase.from('ai_chat_sessions').update({ status: checked ? 'active' : 'human' }).eq('id', selectedChat.id);
+    } catch (err) {
+      console.error("Failed to update AI status:", err);
     }
   };
 
@@ -348,7 +377,7 @@ export default function LiveChatPage() {
                 <div className="flex items-center gap-2 mr-4 px-3 py-1.5 bg-primary/5 rounded-full border border-primary/10">
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
                   <span className="text-[10px] font-black text-primary uppercase tracking-wider">AI Agent Active</span>
-                  <Switch checked={isAIActive} onCheckedChange={setIsAIActive} className="scale-75 data-[state=checked]:bg-primary" />
+                  <Switch checked={isAIActive} onCheckedChange={handleToggleAI} className="scale-75 data-[state=checked]:bg-primary" />
                 </div>
                 <Button variant="ghost" size="icon" className="rounded-full hover:bg-white/50">
                   <Phone className="w-4 h-4 text-slate-500" />

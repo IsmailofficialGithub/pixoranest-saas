@@ -83,6 +83,32 @@ export default function FloatingChatWidget() {
     }
   }, [chatMessages, isOpen]);
 
+  useEffect(() => {
+    if (!sessionId) return;
+    
+    // Subscribe to incoming messages (like Admin human takeovers)
+    const channel = supabase.channel(`widget-msgs-${sessionId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ai_chat_messages', filter: `session_id=eq.${sessionId}` }, (payload) => {
+         const dbMsg = payload.new;
+         
+         setChatMessages(prev => {
+           // Prevent optimistic UI duplication
+           if (prev.some(m => m.text === dbMsg.content)) return prev;
+           
+           return [...prev, {
+             id: dbMsg.id || Date.now().toString(),
+             sender: dbMsg.role === 'user' ? 'customer' : 'ai',
+             text: dbMsg.content,
+             time: new Date(dbMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+             isAI: dbMsg.role === 'assistant'
+           }];
+         });
+      })
+      .subscribe();
+      
+    return () => { supabase.removeChannel(channel); };
+  }, [sessionId]);
+
   const handleSendMessage = async () => {
     if (!message.trim()) return;
     
@@ -122,14 +148,17 @@ export default function FloatingChatWidget() {
             setChatMessages(prev => [...prev, errorMsg]);
         } else if (data) {
             if (data.sessionId) setSessionId(data.sessionId);
-            const aiMsg = { 
-                id: Date.now().toString(), 
-                sender: "ai", 
-                text: data.message, 
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
-                isAI: true 
-            };
-            setChatMessages(prev => [...prev, aiMsg]);
+            
+            if (data.message) {
+              const aiMsg = { 
+                  id: Date.now().toString(), 
+                  sender: "ai", 
+                  text: data.message, 
+                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
+                  isAI: true 
+              };
+              setChatMessages(prev => [...prev, aiMsg]);
+            }
         }
     } catch (err) {
         console.error("Failed to send message:", err);
