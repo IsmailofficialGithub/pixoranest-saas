@@ -20,6 +20,7 @@ import VoiceReceptionistPage from "./pages/client/VoiceReceptionistPage";
 import CampaignDetailPage from "./pages/client/CampaignDetailPage";
 import CallLogsPage from "./pages/client/CallLogsPage";
 import WhatsAppPage from "./pages/client/WhatsAppPage";
+import WhatsAppHistoryPage from "./pages/client/WhatsAppHistoryPage";
 import SocialMediaPage from "./pages/client/SocialMediaPage";
 import UsageBillingPage from "./pages/client/UsageBillingPage";
 import ClientSettingsPage from "./pages/client/ClientSettingsPage";
@@ -92,6 +93,7 @@ const App = () => (
               <Route path="inbound" element={<InboundServicePage />} />
               <Route path="voice-agent" element={<VoiceAgentPage />} />
               <Route path="whatsapp" element={<WhatsAppPage />} />
+              <Route path="whatsapp/history" element={<WhatsAppHistoryPage />} />
               <Route path="social-media" element={<SocialMediaPage />} />
               <Route path="email-marketing" element={<EmailMarketingPage />} />
               <Route path="leads" element={<LeadsPage />} />

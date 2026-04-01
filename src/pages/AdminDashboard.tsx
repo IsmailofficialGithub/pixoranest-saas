@@ -13,6 +13,7 @@ import VoiceAgentPage from "@/pages/admin/VoiceAgentPage";
 import AdminVoiceReceptionistPage from "@/pages/admin/AdminVoiceReceptionistPage";
 import AdminVoiceTelecallerPage from "@/pages/admin/AdminVoiceTelecallerPage";
 import AdminWhatsAppPage from "@/pages/admin/AdminWhatsAppPage";
+import AdminWhatsAppBotsPage from "@/pages/admin/AdminWhatsAppBotsPage";
 import AdminSocialMediaPage from "@/pages/admin/AdminSocialMediaPage";
 
 export default function AdminDashboard() {
@@ -29,6 +30,7 @@ export default function AdminDashboard() {
         <Route path="voice-receptionist" element={<AdminVoiceReceptionistPage />} />
         <Route path="voice-telecaller" element={<AdminVoiceTelecallerPage />} />
         <Route path="whatsapp" element={<AdminWhatsAppPage />} />
+        <Route path="whatsapp/bots" element={<AdminWhatsAppBotsPage />} />
         <Route path="social-media" element={<AdminSocialMediaPage />} />
         <Route path="analytics" element={<AdminAnalyticsPage />} />
         <Route path="billing" element={<AdminBillingPage />} />

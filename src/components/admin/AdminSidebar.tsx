@@ -9,6 +9,7 @@ import {
   CreditCard,
   Settings,
   Bot,
+  MessageCircle,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,8 @@ const navItems = [
   { title: "My Pricing", icon: DollarSign, path: "/admin/pricing" },
   { title: "My Clients", icon: Users, path: "/admin/clients" },
   { title: "AI Voice Agent", icon: Bot, path: "/admin/voice-agent" },
+  { title: "WhatsApp Analytics", icon: MessageCircle, path: "/admin/whatsapp" },
+  { title: "WhatsApp Management", icon: Bot, path: "/admin/whatsapp/bots" },
   { title: "Analytics", icon: BarChart, path: "/admin/analytics" },
   { title: "Billing", icon: CreditCard, path: "/admin/billing" },
   { title: "Settings", icon: Settings, path: "/admin/settings" },
@@ -58,7 +61,7 @@ export default function AdminSidebar({ open, onClose }: AdminSidebarProps) {
       >
         <div className="flex items-center justify-between px-6 py-6 border-b border-white/5 min-h-[80px]">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white/5 shadow-lg shadow-black/20 shrink-0 border border-white/10">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 shadow-lg shadow-black/20 shrink-0 border border-white/10">
               <img src="/logo.png" alt="PIXORA" className="h-full w-full object-contain p-1" />
             </div>
             <div className="flex flex-col min-w-0">

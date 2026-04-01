@@ -11,6 +11,7 @@ import {
   Zap,
   MessageSquare,
   Layout,
+  History as HistoryIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/contexts/ClientContext";
@@ -44,6 +45,7 @@ export default function ClientSidebar({ open, onClose }: ClientSidebarProps) {
 
   const commonNavItems = [
     { title: "Live Chat", icon: MessageSquare, path: "/client/live-chat" },
+    { title: "Bot History", icon: HistoryIcon, path: "/client/whatsapp/history" },
     // { title: "Landing Page Builder", icon: Layout, path: "/client/landing-page-builder" },
     { title: "AI Configuration", icon: Sparkles, path: "/client/ai-config" },
     { title: "Service Catalog", icon: Package, path: "/client/services" },
