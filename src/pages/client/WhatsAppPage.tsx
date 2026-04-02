@@ -93,6 +93,8 @@ export default function WhatsAppPage() {
   const [analyticsData, setAnalyticsData] = useState<any[]>([]);
   const [statusDistribution, setStatusDistribution] = useState<any[]>([]);
   const [workflowInstance, setWorkflowInstance] = useState<any>(null);
+  const [assignedBots, setAssignedBots] = useState<any[]>([]);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 
   const waService = assignedServices.find(s => s.service_slug === "whatsapp-automation");
 
@@ -155,6 +157,24 @@ export default function WhatsAppPage() {
       .eq("service_slug", "whatsapp-automation")
       .maybeSingle();
     setWorkflowInstance(data);
+  }
+
+  async function fetchAssignedBots() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
+    // Fetch bots the user has access to
+    const { data, error } = await (supabase.from("whatsapp_user_access" as any) as any)
+      .select("application_id, whatsapp_applications(*)")
+      .eq("user_id", user.id);
+    
+    if (!error && data) {
+      const bots = data.map((d: any) => d.whatsapp_applications);
+      setAssignedBots(bots);
+      if (bots.length > 0 && !selectedAppId) {
+        setSelectedAppId(bots[0].id);
+      }
+    }
   }
 
   async function fetchRecentMessages() {
@@ -227,6 +247,7 @@ export default function WhatsAppPage() {
     if (!client || contextLoading) return;
     if (!waService) return;
     fetchAll();
+    fetchAssignedBots();
   }, [client, contextLoading, waService]);
 
   // Realtime for campaigns
@@ -451,6 +472,9 @@ export default function WhatsAppPage() {
         onSent={() => { fetchRecentMessages(); fetchStats(); }} 
         webhookUrl={workflowInstance?.webhook_url}
         workflowInstanceId={workflowInstance?.id}
+        assignedBots={assignedBots}
+        selectedAppId={selectedAppId}
+        onAppChange={setSelectedAppId}
       />
       <CreateCampaignWizardWA 
         open={campaignWizardOpen} 
@@ -461,6 +485,7 @@ export default function WhatsAppPage() {
         onCreated={() => { fetchCampaigns(); fetchStats(); }}
         webhookUrl={workflowInstance?.webhook_url}
         workflowInstanceId={workflowInstance?.id}
+        selectedAppId={selectedAppId}
       />
     </div>
   );
@@ -585,13 +610,16 @@ function maskPhone(phone: string): string {
 }
 
 /* ─── Send Message Modal ─── */
-function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, workflowInstanceId }: { 
+function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, workflowInstanceId, assignedBots, selectedAppId, onAppChange }: { 
   open: boolean; 
   onOpenChange: (v: boolean) => void; 
   clientId: string; 
   onSent: () => void;
   webhookUrl?: string;
   workflowInstanceId?: string;
+  assignedBots: any[];
+  selectedAppId: string | null;
+  onAppChange: (id: string) => void;
 }) {
   const { toast } = useToast();
   const [phone, setPhone] = useState("");
@@ -610,6 +638,7 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
     setSending(true);
     const { error } = await supabase.from("whatsapp_messages").insert({
       client_id: clientId,
+      application_id: selectedAppId,
       phone_number: phone.trim(),
       message_type: messageType as any,
       message_content: content.trim(),
@@ -658,6 +687,19 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
           <DialogDescription>Send a message to a single contact</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {assignedBots.length > 1 && (
+            <div>
+              <Label>Select WhatsApp Bot</Label>
+              <Select value={selectedAppId || ""} onValueChange={onAppChange}>
+                <SelectTrigger><SelectValue placeholder="Select Bot" /></SelectTrigger>
+                <SelectContent>
+                  {assignedBots.map(bot => (
+                    <SelectItem key={bot.id} value={bot.id}>{bot.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label>Phone Number</Label>
             <Input placeholder="+91 9876543210" value={phone} onChange={e => setPhone(e.target.value)} />
@@ -707,11 +749,12 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
 }
 
 /* ─── Campaign Wizard ─── */
-function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usageConsumed, onCreated, webhookUrl, workflowInstanceId }: {
+function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usageConsumed, onCreated, webhookUrl, workflowInstanceId, selectedAppId }: {
   open: boolean; onOpenChange: (v: boolean) => void; clientId: string;
   usageLimit: number; usageConsumed: number; onCreated: () => void;
   webhookUrl?: string;
   workflowInstanceId?: string;
+  selectedAppId: string | null;
 }) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
@@ -772,6 +815,7 @@ function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usag
     // Insert messages for each contact
     const messages = contacts.map(c => ({
       client_id: clientId,
+      application_id: selectedAppId,
       campaign_id: data.id,
       phone_number: c.phone,
       message_content: messageContent.trim(),

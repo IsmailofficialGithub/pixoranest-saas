@@ -4,8 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
   Plus, Search, Bot, UserPlus, Trash2, Globe, Phone, 
-  Settings2, Shield, ExternalLink, QrCode
+  Settings2, Shield, ExternalLink, QrCode, SendHorizonal
 } from "lucide-react";
+import { sendWhatsAppMessage } from "@/utils/whatsapp";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +47,10 @@ export default function AdminWhatsAppBotsPage() {
   const [search, setSearch] = useState("");
   const [isAddBotOpen, setIsAddBotOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [isTestOpen, setIsTestOpen] = useState(false);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
+  const [testMessage, setTestMessage] = useState({ to: "", text: "Test from Pixora!" });
+  const [isSendingTest, setIsSendingTest] = useState(false);
   
   // Form States
   const [newBot, setNewBot] = useState({
@@ -152,6 +156,36 @@ export default function AdminWhatsAppBotsPage() {
     }
   });
 
+  const handleSendTestMessage = async () => {
+    if (!selectedBotId || !testMessage.to || !testMessage.text) return;
+    const bot = bots.find(b => b.id === selectedBotId);
+    if (!bot) return;
+
+    if (bot.provider_type !== 'api') {
+      toast.error("Test message only supported for API bots currently.");
+      return;
+    }
+
+    setIsSendingTest(true);
+    try {
+      await sendWhatsAppMessage({
+        to: testMessage.to,
+        text: testMessage.text,
+        type: "text",
+        application_id: bot.id,
+        phoneNoId: bot.api_config?.phone_id || ""
+      }, bot.api_config?.api_key);
+      
+      toast.success("Test message sent!");
+      setIsTestOpen(false);
+      setTestMessage({ to: "", text: "Test from Pixora!" });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send message");
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
   const filteredBots = bots.filter(b => 
     b.name.toLowerCase().includes(search.toLowerCase()) || 
     b.phone?.includes(search)
@@ -216,6 +250,12 @@ export default function AdminWhatsAppBotsPage() {
                   setIsAssignOpen(true);
                 }}>
                   <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Assign User
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => {
+                  setSelectedBotId(bot.id);
+                  setIsTestOpen(true);
+                }}>
+                  <SendHorizonal className="mr-1.5 h-3.5 w-3.5" /> Test
                 </Button>
                 <Button size="sm" variant="ghost">
                   <Settings2 className="mr-1.5 h-3.5 w-3.5" /> Config
@@ -310,6 +350,34 @@ export default function AdminWhatsAppBotsPage() {
           </div>
           <DialogFooter>
             <Button onClick={() => assignUserId && selectedBotId && assignUserMutation.mutate({ botId: selectedBotId, userId: assignUserId })}>Grant Access</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isTestOpen} onOpenChange={setIsTestOpen}>
+        <DialogContent className="max-w-md bg-card border-white/10">
+          <DialogHeader>
+            <DialogTitle>Send Test WhatsApp</DialogTitle>
+            <DialogDescription>Test your bot connection by sending a real message.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Recipient Phone (with country code)</Label>
+              <Input placeholder="919988XXXXXX" value={testMessage.to} onChange={e => setTestMessage({...testMessage, to: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Message Text</Label>
+              <textarea 
+                className="flex min-h-[80px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={testMessage.text} 
+                onChange={e => setTestMessage({...testMessage, text: e.target.value})} 
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSendTestMessage} disabled={isSendingTest || !testMessage.to}>
+              {isSendingTest ? "Sending..." : "Send Message"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
