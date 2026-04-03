@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { sendWhatsAppMessage } from "@/utils/whatsapp";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -636,19 +637,39 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
       return;
     }
     setSending(true);
-    const { error } = await supabase.from("whatsapp_messages").insert({
-      client_id: clientId,
-      application_id: selectedAppId,
-      phone_number: phone.trim(),
-      message_type: messageType as any,
-      message_content: content.trim(),
-      template_name: messageType === "template" ? templateName : null,
-      status: "queued",
-    });
-
     
-    // Also trigger the webhook if available to actually "work with API"
-    if (!error && webhookUrl) {
+    // 1. Get the bot config
+    const bot = assignedBots.find(b => b.id === selectedAppId);
+    
+    try {
+      // 2. Send REAL WhatsApp message if it's an API provider
+      if (bot && bot.provider_type === 'api') {
+        await sendWhatsAppMessage({
+          to: phone.trim(),
+          text: content.trim(),
+          type: "text",
+          application_id: bot.id,
+          phoneNoId: bot.api_config?.phone_id || ""
+        }, bot.api_config?.api_key);
+        
+        toast({ title: "Message sent!", description: "WhatsApp message delivered." });
+      } else {
+        // Fallback for non-API bots: just log it (e.g. for Baileys)
+        const { error: insertError } = await supabase.from("whatsapp_messages").insert({
+          client_id: clientId,
+          application_id: selectedAppId,
+          phone_number: phone.trim(),
+          message_type: messageType as any,
+          message_content: content.trim(),
+          template_name: messageType === "template" ? templateName : null,
+          status: "queued",
+        });
+        if (insertError) throw insertError;
+        toast({ title: "Message queued", description: "Message has been queued for sending." });
+      }
+
+      // 3. Trigger webhook if available
+      if (webhookUrl) {
       try {
         await fetch(webhookUrl, {
           method: "POST",
@@ -668,14 +689,13 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
       }
     }
 
-    setSending(false);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Message queued", description: "Message has been queued for sending." });
+      setSending(false);
       reset();
       onOpenChange(false);
       onSent();
+    } catch (err: any) {
+      setSending(false);
+      toast({ title: "Error", description: err.message || "Failed to send message", variant: "destructive" });
     }
   };
 

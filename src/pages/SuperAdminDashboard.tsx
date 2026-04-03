@@ -15,6 +15,8 @@ import BotsPage from "./super-admin/BotsPage";
 import OutboundCampaignsPage from "./super-admin/OutboundCampaignsPage";
 import OutboundCallLogsPage from "./super-admin/OutboundCallLogsPage";
 import InboundNumbersPage from "./super-admin/InboundNumbersPage";
+import AdminWhatsAppBotsPage from "./admin/AdminWhatsAppBotsPage";
+import AdminWhatsAppPage from "./admin/AdminWhatsAppPage";
 
 export default function SuperAdminDashboard() {
   return (
@@ -32,6 +34,8 @@ export default function SuperAdminDashboard() {
         <Route path="outbound-call-logs" element={<OutboundCallLogsPage />} />
         <Route path="n8n-controller" element={<N8nControllerPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="whatsapp" element={<AdminWhatsAppPage />} />
+        <Route path="whatsapp/bots" element={<AdminWhatsAppBotsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
       </Route>

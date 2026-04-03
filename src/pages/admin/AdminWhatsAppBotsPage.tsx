@@ -48,6 +48,7 @@ export default function AdminWhatsAppBotsPage() {
   const [isAddBotOpen, setIsAddBotOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [isTestOpen, setIsTestOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [testMessage, setTestMessage] = useState({ to: "", text: "Test from Pixora!" });
   const [isSendingTest, setIsSendingTest] = useState(false);
@@ -60,6 +61,16 @@ export default function AdminWhatsAppBotsPage() {
     api_key: "",
     phone_id: "",
   });
+
+  const [editBot, setEditBot] = useState<{
+    id: string;
+    name: string;
+    provider_type: "baileys" | "api";
+    panel_url: string;
+    api_key: string;
+    phone_id: string;
+    status: string;
+  } | null>(null);
   
   const [assignUserId, setAssignUserId] = useState("");
 
@@ -76,13 +87,28 @@ export default function AdminWhatsAppBotsPage() {
   });
 
   const { data: users = [] } = useQuery({
-    queryKey: ["admin-users-list"],
+    queryKey: ["whatsapp-eligible-users"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("user_id, email, full_name")
-        .limit(100);
-      if (error) throw error;
+        .select(`
+          user_id, email, full_name,
+          clients!inner(
+            id,
+            client_services!inner(
+              is_active,
+              services!inner(slug)
+            )
+          )
+        `)
+        .eq("clients.client_services.is_active", true)
+        .eq("clients.client_services.services.slug", "whatsapp");
+      
+      if (error) {
+        console.error("Error fetching eligible users:", error);
+        const { data: allProfiles } = await supabase.from("profiles").select("user_id, email, full_name").limit(100);
+        return allProfiles || [];
+      }
       return data;
     }
   });
@@ -130,16 +156,55 @@ export default function AdminWhatsAppBotsPage() {
   const assignUserMutation = useMutation({
     mutationFn: async ({ botId, userId }: { botId: string, userId: string }) => {
       const { error } = await (supabase.from("whatsapp_user_access" as any) as any)
-        .insert([{ application_id: botId, user_id: userId }]);
+        .upsert([{ 
+          application_id: botId, 
+          user_id: userId,
+          granted_by: (await supabase.auth.getUser()).data.user?.id
+        }], { onConflict: 'user_id,application_id' });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-wa-access"] });
-      toast.success("User access granted");
+      toast.success("User access managed successfully");
       setIsAssignOpen(false);
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to assign user");
+    }
+  });
+
+  const updateBotMutation = useMutation({
+    mutationFn: async (botData: any) => {
+      const { data, error } = await (supabase.from("whatsapp_applications" as any) as any)
+        .update({
+          name: botData.name,
+          provider_type: botData.provider_type,
+          api_config: botData.provider_type === "api" ? {
+            panel_url: botData.panel_url,
+            api_key: botData.api_key,
+            phone_id: botData.phone_id
+          } : {},
+          status: botData.status
+        })
+        .eq("id", botData.id);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-wa-bots"] });
+      toast.success("WhatsApp Bot updated successfully");
+      setIsEditOpen(false);
+    }
+  });
+
+  const deleteBotMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase.from("whatsapp_applications" as any) as any).delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-wa-bots"] });
+      toast.success("Bot deleted");
     }
   });
 
@@ -257,8 +322,26 @@ export default function AdminWhatsAppBotsPage() {
                 }}>
                   <SendHorizonal className="mr-1.5 h-3.5 w-3.5" /> Test
                 </Button>
-                <Button size="sm" variant="ghost">
+                <Button size="sm" variant="ghost" onClick={() => {
+                  setEditBot({
+                    id: bot.id,
+                    name: bot.name,
+                    provider_type: bot.provider_type,
+                    panel_url: bot.api_config?.panel_url || "",
+                    api_key: bot.api_config?.api_key || "",
+                    phone_id: bot.api_config?.phone_id || "",
+                    status: bot.status
+                  });
+                  setIsEditOpen(true);
+                }}>
                   <Settings2 className="mr-1.5 h-3.5 w-3.5" /> Config
+                </Button>
+                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 ml-auto" onClick={() => {
+                   if (confirm("Delete this bot? All user access will be revoked.")) {
+                     deleteBotMutation.mutate(bot.id);
+                   }
+                }}>
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </CardContent>
@@ -378,6 +461,64 @@ export default function AdminWhatsAppBotsPage() {
             <Button onClick={handleSendTestMessage} disabled={isSendingTest || !testMessage.to}>
               {isSendingTest ? "Sending..." : "Send Message"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit/Config Bot Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-md bg-card border-white/10">
+          <DialogHeader><DialogTitle>Configure Bot: {editBot?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Bot Name</Label>
+              <Input value={editBot?.name} onChange={e => editBot && setEditBot({...editBot, name: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={editBot?.status} onValueChange={(v: any) => editBot && setEditBot({...editBot, status: v})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Provider Type</Label>
+              <Select value={editBot?.provider_type} onValueChange={(v: any) => editBot && setEditBot({...editBot, provider_type: v})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="api">External API</SelectItem>
+                  <SelectItem value="baileys">Baileys Session</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {editBot?.provider_type === "api" && (
+              <div className="space-y-3 pt-2 border-t border-white/5">
+                <div className="space-y-2">
+                  <Label className="text-xs">Panel URL</Label>
+                  <Input placeholder="https://api.provider.com" value={editBot.panel_url} onChange={e => setEditBot({...editBot, panel_url: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">API Key</Label>
+                  <Input type="password" value={editBot.api_key} onChange={e => setEditBot({...editBot, api_key: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Phone ID</Label>
+                  <Input value={editBot.phone_id} onChange={e => setEditBot({...editBot, phone_id: e.target.value})} />
+                </div>
+              </div>
+            )}
+            {editBot?.provider_type === "baileys" && (
+              <div className="p-3 bg-secondary/50 rounded-lg text-sm text-muted-foreground border border-white/5">
+                Baileys sessions are managed via the local server scan. Switching to this mode will disable the External API settings for this bot.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => editBot && updateBotMutation.mutate(editBot)}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
