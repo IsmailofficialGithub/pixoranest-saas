@@ -15,7 +15,9 @@ export default function Login() {
   const { session, profile, loading: authLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -31,33 +33,57 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      if (isSignUp) {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+            },
+          },
+        });
 
-      if (signInError) {
-        setError(signInError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (data.user) {
-        // Fetch role to redirect
-        const { data: roleData, error: roleError } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", data.user.id)
-          .maybeSingle();
-
-        if (roleError || !roleData) {
-          setError("No role assigned to this account. Contact your administrator.");
+        if (signUpError) {
+          setError(signUpError.message);
           setLoading(false);
           return;
         }
 
-        const role = roleData.role as "super_admin" | "admin" | "client";
-        navigate(getRedirectPath(role), { replace: true });
+        if (data.user) {
+          setError("");
+          alert("Check your email for the confirmation link!");
+          setIsSignUp(false);
+        }
+      } else {
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (signInError) {
+          setError(signInError.message);
+          setLoading(false);
+          return;
+        }
+
+        if (data.user) {
+          // Fetch role to redirect
+          const { data: roleData, error: roleError } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", data.user.id)
+            .maybeSingle();
+
+          if (roleError || !roleData) {
+            setError("No role assigned to this account. Contact your administrator.");
+            setLoading(false);
+            return;
+          }
+
+          const role = roleData.role as "super_admin" | "admin" | "client";
+          navigate(getRedirectPath(role), { replace: true });
+        }
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");
@@ -121,14 +147,17 @@ export default function Login() {
         className="relative z-10 w-full max-w-[400px]"
       >
         <div className="mb-8 flex flex-col items-center gap-4">
-
             <img src="/logo2.png" alt="PIXORA" className="h-full w-full object-contain" />
         </div>
 
         <Card className="border-white/10 bg-slate-900/50 backdrop-blur-xl shadow-2xl">
           <CardHeader className="text-center space-y-1">
-            <CardTitle className="text-2xl font-bold text-white">Welcome Back</CardTitle>
-            <CardDescription className="text-slate-400">Sign in to your account</CardDescription>
+            <CardTitle className="text-2xl font-bold text-white">
+              {isSignUp ? "Create Account" : "Welcome Back"}
+            </CardTitle>
+            <CardDescription className="text-slate-400">
+              {isSignUp ? "Sign up for a new account" : "Sign in to your account"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -141,6 +170,21 @@ export default function Login() {
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 </motion.div>
+              )}
+
+              {isSignUp && (
+                <div className="space-y-2">
+                  <Label htmlFor="fullName" className="text-slate-200">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="John Doe"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                    className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-primary/50 focus:ring-primary/20 transition-all"
+                  />
+                </div>
               )}
 
               <div className="space-y-2">
@@ -192,44 +236,62 @@ export default function Login() {
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in…
+                    {isSignUp ? "Creating account…" : "Signing in…"}
                   </>
                 ) : (
-                  "Login"
+                  isSignUp ? "Sign Up" : "Login"
                 )}
               </Button>
 
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  className="text-sm text-slate-400 hover:text-primary transition-colors hover:underline underline-offset-4"
-                  onClick={async () => {
-                    if (!email) {
-                      setError("Please enter your email address first.");
-                      return;
-                    }
-                    setLoading(true);
-                    setError("");
-                    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-                      redirectTo: window.location.origin + "/login",
-                    });
-                    setLoading(false);
-                    if (resetError) {
-                      setError(resetError.message);
-                    } else {
+              <div className="space-y-4 pt-2">
+                <div className="text-center">
+                  <button
+                    type="button"
+                    className="text-sm text-slate-400 hover:text-primary transition-colors hover:underline underline-offset-4"
+                    onClick={() => {
+                      setIsSignUp(!isSignUp);
                       setError("");
-                      alert("Password reset email sent! Check your inbox.");
-                    }
-                  }}
-                >
-                  Forgot Password?
-                </button>
+                    }}
+                  >
+                    {isSignUp ? "Already have an account? Login" : "Don't have an account? Sign Up"}
+                  </button>
+                </div>
+
+                {!isSignUp && (
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      className="text-xs text-slate-500 hover:text-primary transition-colors hover:underline underline-offset-4"
+                      onClick={async () => {
+                        if (!email) {
+                          setError("Please enter your email address first.");
+                          return;
+                        }
+                        setLoading(true);
+                        setError("");
+                        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+                          redirectTo: window.location.origin + "/login",
+                        });
+                        setLoading(false);
+                        if (resetError) {
+                          setError(resetError.message);
+                        } else {
+                          setError("");
+                          alert("Password reset email sent! Check your inbox.");
+                        }
+                      }}
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+                )}
               </div>
             </form>
           </CardContent>
         </Card>
       </motion.div>
     </div>
+
   );
 }
 

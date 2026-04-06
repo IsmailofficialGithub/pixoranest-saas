@@ -235,10 +235,8 @@ export default function AdminWhatsAppBotsPage() {
     try {
       await sendWhatsAppMessage({
         to: testMessage.to,
-        text: testMessage.text,
-        type: "text",
+        body: testMessage.text,
         application_id: bot.id,
-        phoneNoId: bot.api_config?.phone_id || ""
       }, bot.api_config?.api_key);
       
       toast.success("Test message sent!");

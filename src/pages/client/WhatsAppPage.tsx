@@ -646,10 +646,8 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
       if (bot && bot.provider_type === 'api') {
         await sendWhatsAppMessage({
           to: phone.trim(),
-          text: content.trim(),
-          type: "text",
+          body: content.trim(),
           application_id: bot.id,
-          phoneNoId: bot.api_config?.phone_id || ""
         }, bot.api_config?.api_key);
         
         toast({ title: "Message sent!", description: "WhatsApp message delivered." });

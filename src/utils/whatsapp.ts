@@ -5,10 +5,15 @@ const DEFAULT_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 
 export interface SendWhatsAppMessageParams {
   to: string;
-  phoneNoId: string;
-  type: "text";
-  text: string;
+  body: string;
   application_id: string; // The ID of the bot in our database
+  /**
+   * @deprecated phoneNoId and type are not used by WhapiHub API.
+   * Only 'to' and 'body' are required.
+   */
+  phoneNoId?: string;
+  type?: string;
+  text?: string;
 }
 
 /**
@@ -20,6 +25,8 @@ export async function sendWhatsAppMessage(params: SendWhatsAppMessageParams, api
 
   try {
     // 1. Send the actual message through WhapiHub
+    // WhapiHub API requires: { to, body } — the 'body' field contains the message text.
+    // Using 'text' or 'phoneNoId' will be silently ignored, causing 200 OK but no delivery.
     const response = await fetch(WHATSAPP_API_URL, {
       method: "POST",
       headers: {
@@ -28,9 +35,7 @@ export async function sendWhatsAppMessage(params: SendWhatsAppMessageParams, api
       },
       body: JSON.stringify({
         to: params.to,
-        phoneNoId: params.phoneNoId,
-        type: params.type,
-        text: params.text,
+        body: params.body ?? params.text, // 'body' is the correct WhapiHub field
       }),
     });
 
@@ -44,8 +49,8 @@ export async function sendWhatsAppMessage(params: SendWhatsAppMessageParams, api
     const { error: dbError } = await (supabase.from("whatsapp_messages" as any) as any).insert({
       application_id: params.application_id,
       phone_number: params.to,
-      message_content: params.text,
-      message_type: params.type,
+      message_content: params.body ?? params.text,
+      message_type: "text",
       status: "sent",
       whatsapp_message_id: result?.id || null, // WhapiHub returns an ID
       sent_at: new Date().toISOString(),
