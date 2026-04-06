@@ -4,8 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
   Plus, Search, Bot, UserPlus, Trash2, Globe, Phone, 
-  Settings2, Shield, ExternalLink, QrCode, SendHorizonal
+  Settings2, Shield, ExternalLink, QrCode, SendHorizonal, SearchIcon
 } from "lucide-react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { sendWhatsAppMessage } from "@/utils/whatsapp";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,8 @@ export default function AdminWhatsAppBotsPage() {
   } | null>(null);
   
   const [assignUserId, setAssignUserId] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const debouncedUserSearch = useDebounce(userSearch, 300);
 
   // Queries
   const { data: bots = [], isLoading: isBotsLoading } = useQuery({
@@ -89,40 +92,73 @@ export default function AdminWhatsAppBotsPage() {
   const { data: users = [] } = useQuery({
     queryKey: ["whatsapp-eligible-users"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
+      // 1. Fetch clients who have the 'whatsapp' service active
+      // Starting from client_services because it has valid relations to both clients and services
+      const { data: activeServices, error: servicesError } = await supabase
+        .from("client_services")
         .select(`
-          user_id, email, full_name,
-          clients!inner(
-            id,
-            client_services!inner(
-              is_active,
-              services!inner(slug)
-            )
-          )
+          client_id,
+          clients!inner(user_id),
+          services!inner(slug)
         `)
-        .eq("clients.client_services.is_active", true)
-        .eq("clients.client_services.services.slug", "whatsapp");
-      
-      if (error) {
-        console.error("Error fetching eligible users:", error);
-        const { data: allProfiles } = await supabase.from("profiles").select("user_id, email, full_name").limit(100);
+        .eq("is_active", true)
+        .eq("services.slug", "whatsapp");
+
+      if (servicesError) {
+        console.error("Error fetching active services:", servicesError);
+        // Fallback: Fetch some profiles so the dropdown isn't totally empty during debugging
+        const { data: allProfiles } = await supabase.from("profiles").select("user_id, email, full_name").limit(50);
         return allProfiles || [];
       }
-      return data;
+
+      if (!activeServices || activeServices.length === 0) return [];
+
+      const activeUserIds = [...new Set(activeServices.map((s: any) => s.clients?.user_id).filter(Boolean))];
+
+      if (activeUserIds.length === 0) return [];
+
+      // 2. Fetch profiles for those user IDs
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, email, full_name")
+        .in("user_id", activeUserIds);
+      
+      if (profilesError) {
+        console.error("Error fetching eligible profiles:", profilesError);
+        return [];
+      }
+
+      return profiles;
     }
   });
 
   const { data: accessList = [] } = useQuery({
     queryKey: ["admin-wa-access"],
     queryFn: async () => {
-      const { data, error } = await (supabase.from("whatsapp_user_access" as any) as any)
-        .select(`
-          id, user_id, application_id,
-          profile:profiles(email, full_name)
-        `);
-      if (error) throw error;
-      return data as any[] as UserAccess[];
+      // Fetch access records first
+      const { data: access, error: accessError } = await (supabase.from("whatsapp_user_access" as any) as any)
+        .select(`id, user_id, application_id`);
+      
+      if (accessError) throw accessError;
+      if (!access || access.length === 0) return [];
+
+      // Fetch profiles for these users
+      const userIds = [...new Set(access.map((a: any) => a.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, email, full_name")
+        .in("user_id", userIds);
+
+      if (profilesError) {
+        console.warn("Could not fetch profiles for access list:", profilesError);
+        return access.map((a: any) => ({ ...a, profile: null })) as UserAccess[];
+      }
+
+      // Join in frontend
+      return access.map((acc: any) => ({
+        ...acc,
+        profile: profiles?.find(p => p.user_id === acc.user_id) || null
+      })) as UserAccess[];
     }
   });
 
@@ -417,20 +453,50 @@ export default function AdminWhatsAppBotsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+      <Dialog open={isAssignOpen} onOpenChange={(v) => { setIsAssignOpen(v); if(!v) setUserSearch(""); }}>
         <DialogContent className="max-w-md bg-card border-white/10">
           <DialogHeader><DialogTitle>Assign Bot</DialogTitle></DialogHeader>
-          <div className="py-4 space-y-2">
-            <Label>Select User</Label>
-            <Select value={assignUserId} onValueChange={setAssignUserId}>
-              <SelectTrigger><SelectValue placeholder="User" /></SelectTrigger>
-              <SelectContent>
-                {users.map(u => <SelectItem key={u.user_id} value={u.user_id}>{u.email}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Search Users</Label>
+              <div className="relative">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Filter by name or email..." 
+                  className="pl-10"
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Select User</Label>
+              <Select value={assignUserId} onValueChange={setAssignUserId}>
+                <SelectTrigger><SelectValue placeholder="User" /></SelectTrigger>
+                <SelectContent>
+                  {users
+                    .filter(u => 
+                      u.email.toLowerCase().includes(debouncedUserSearch.toLowerCase()) || 
+                      (u.full_name || '').toLowerCase().includes(debouncedUserSearch.toLowerCase())
+                    )
+                    .map(u => (
+                      <SelectItem key={u.user_id} value={u.user_id}>
+                        {u.full_name ? `${u.full_name} (${u.email})` : u.email}
+                      </SelectItem>
+                    ))
+                  }
+                  {users.length > 0 && users.filter(u => 
+                    u.email.toLowerCase().includes(debouncedUserSearch.toLowerCase()) || 
+                    (u.full_name || '').toLowerCase().includes(debouncedUserSearch.toLowerCase())
+                  ).length === 0 && (
+                    <div className="px-2 py-4 text-xs text-muted-foreground text-center">No users found</div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
-            <Button onClick={() => assignUserId && selectedBotId && assignUserMutation.mutate({ botId: selectedBotId, userId: assignUserId })}>Grant Access</Button>
+            <Button disabled={!assignUserId} onClick={() => assignUserId && selectedBotId && assignUserMutation.mutate({ botId: selectedBotId, userId: assignUserId })}>Grant Access</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

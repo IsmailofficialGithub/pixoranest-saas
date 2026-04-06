@@ -11,7 +11,7 @@ export const SERVICE_ROUTE_MAP: Record<string, string> = {
   "ai-voice-agent": "voice-agent",
   "whatsapp-automation": "whatsapp",
   "social-media-automation": "social-media",
-  "ai-inbound": "inbound",
+  "ai-inbound": "first-voice",
   "email-marketing": "email-marketing",
   // Legacy slugs (if DB already uses short slugs)
   "voice-telecaller": "voice-telecaller",
@@ -19,7 +19,7 @@ export const SERVICE_ROUTE_MAP: Record<string, string> = {
   "voice-agent": "voice-agent",
   "whatsapp": "whatsapp",
   "social-media": "social-media",
-  "inbound": "inbound",
+  "inbound": "first-voice",
 };
 
 export const SERVICE_ICON_MAP: Record<string, React.ElementType> = {
@@ -28,7 +28,7 @@ export const SERVICE_ICON_MAP: Record<string, React.ElementType> = {
   "voice-agent": Headphones,
   "whatsapp": MessageCircle,
   "social-media": Share2,
-  "inbound": PhoneIncoming,
+  "first-voice": PhoneIncoming,
   "email-marketing": Mail,
 };
 
@@ -38,7 +38,7 @@ export const SERVICE_LABEL_MAP: Record<string, string> = {
   "voice-agent": "EcoAssist",
   "whatsapp": "LeadNest",
   "social-media": "Socialium",
-  "inbound": "First Voice",
+  "first-voice": "First Voice",
   "email-marketing": "Email Marketing",
 };
 

@@ -150,12 +150,12 @@ export default function WhatsAppPage() {
   }
 
   async function fetchWorkflow() {
-    if (!client) return;
+    if (!client || !waService) return;
     const { data } = await supabase
       .from("client_workflow_instances")
       .select("*")
       .eq("client_id", client.id)
-      .eq("service_slug", "whatsapp-automation")
+      .eq("service_id", waService.service_id)
       .maybeSingle();
     setWorkflowInstance(data);
   }
@@ -650,10 +650,11 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
           application_id: bot.id,
         }, bot.api_config?.api_key);
         
-        toast({ title: "Message sent!", description: "WhatsApp message delivered." });
+        toast({ title: "Message sent!", description: "WhatsApp message delivered via API." });
+        onSent();
       } else {
         // Fallback for non-API bots: just log it (e.g. for Baileys)
-        const { error: insertError } = await supabase.from("whatsapp_messages").insert({
+        const { error: insertError } = await supabase.from("whatsapp_messages" as any).insert({
           client_id: clientId,
           application_id: selectedAppId,
           phone_number: phone.trim(),
@@ -661,36 +662,49 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
           message_content: content.trim(),
           template_name: messageType === "template" ? templateName : null,
           status: "queued",
+          sent_at: new Date().toISOString(),
         });
-        if (insertError) throw insertError;
-        toast({ title: "Message queued", description: "Message has been queued for sending." });
-      }
 
-      // 3. Trigger webhook if available
-      if (webhookUrl) {
-      try {
-        await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            client_id: clientId,
-            campaign_id: null,
-            workflow_instance_id: workflowInstanceId,
-            message_type: messageType,
-            message_content: content.trim(),
-            template_name: messageType === "template" ? templateName : null,
-            contacts: [{ phone: phone.trim() }]
-          }),
-        });
-      } catch (e) {
-        console.error("Webhook trigger failed:", e);
+        if (insertError) throw insertError;
+        
+        // Trigger webhook for automation-based bots
+        if (webhookUrl) {
+          try {
+            await fetch(webhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                event: "whatsapp.message.send",
+                client_id: clientId,
+                application_id: selectedAppId,
+                application_name: bot?.name,
+                campaign_id: null,
+                workflow_instance_id: workflowInstanceId,
+                message_type: messageType,
+                message_content: content.trim(),
+                template_name: messageType === "template" ? templateName : null,
+                contacts: [{ phone: phone.trim() }]
+              }),
+            });
+            toast({ title: "Message queued", description: "Sent to automation for delivery." });
+          } catch (e) {
+            console.error("Webhook trigger failed:", e);
+            toast({ title: "Warning", description: "Message logged but automation trigger failed.", variant: "destructive" });
+          }
+        } else {
+          toast({ 
+            title: "Stored in Database", 
+            description: "No automation workflow is connected to send this message to WhatsApp. Stored in history only.",
+            variant: "destructive" 
+          });
+        }
+        
+        onSent();
       }
-    }
 
       setSending(false);
       reset();
       onOpenChange(false);
-      onSent();
     } catch (err: any) {
       setSending(false);
       toast({ title: "Error", description: err.message || "Failed to send message", variant: "destructive" });
@@ -757,7 +771,7 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={sending} style={{ backgroundColor: "#25D366", color: "white" }} onClick={handleSend}>
+          <Button disabled={sending || !selectedAppId || !phone.trim()} style={{ backgroundColor: "#25D366", color: "white" }} onClick={handleSend}>
             {sending ? "Sending..." : "Send Message"}
           </Button>
         </DialogFooter>
@@ -853,7 +867,9 @@ function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usag
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            event: "whatsapp.campaign.create",
             client_id: clientId,
+            application_id: selectedAppId,
             campaign_id: data.id,
             campaign_name: name.trim(),
             workflow_instance_id: workflowInstanceId,
