@@ -27,7 +27,7 @@ import {
   FileText, ArrowRight, Lightbulb, ChevronDown, X,
   Pause, Copy, Trash2, Eye, Zap,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import CreateCampaignWizard from "@/components/client/telecaller/CreateCampaignWizard";
 
@@ -421,7 +421,7 @@ export default function VoiceTelecallerPage() {
                           <TableCell className="font-mono text-sm">{lead.phone || "—"}</TableCell>
                           <TableCell className="capitalize text-sm">{lead.status || "new"}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+                            {format(new Date(lead.created_at), "dd MMM yyyy, hh:mm a")}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="View Details" onClick={() => {
@@ -484,7 +484,7 @@ export default function VoiceTelecallerPage() {
                           <TableCell className="text-sm">{formatDuration(call.duration_seconds)}</TableCell>
                           <TableCell><CallStatusBadge status={call.status} /></TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}
+                            {format(new Date(call.executed_at), "dd MMM yyyy, hh:mm a")}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="View Details" onClick={() => {
@@ -594,7 +594,7 @@ export default function VoiceTelecallerPage() {
                             </p>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}
+                            {format(new Date(call.executed_at), "dd MMM yyyy, hh:mm a")}
                           </TableCell>
                           <TableCell>
                             <DropdownMenu>
@@ -643,7 +643,7 @@ export default function VoiceTelecallerPage() {
                       </div>
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>{formatDuration(call.duration_seconds)}</span>
-                        <span>{formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })}</span>
+                        <span>{format(new Date(call.executed_at), "dd MMM yyyy, hh:mm a")}</span>
                       </div>
                       {call.ai_summary && (
                         <p className="text-xs text-muted-foreground line-clamp-2">{call.ai_summary}</p>
@@ -718,7 +718,7 @@ export default function VoiceTelecallerPage() {
                 </div>
                 <div>
                   <span className="font-semibold text-muted-foreground block mb-1">Time</span>
-                  <span>{selectedCallData.time ? formatDistanceToNow(new Date(selectedCallData.time), { addSuffix: true }) : "—"}</span>
+                  <span>{selectedCallData.time ? format(new Date(selectedCallData.time), "dd MMM yyyy, hh:mm a") : "—"}</span>
                 </div>
               </div>
 
@@ -811,7 +811,7 @@ function CampaignCard({
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground truncate">{campaign.campaign_name}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Scheduled for {campaign.scheduled_at ? formatDistanceToNow(new Date(campaign.scheduled_at), { addSuffix: true }) : 'Now'}
+                  Scheduled for {campaign.scheduled_at ? format(new Date(campaign.scheduled_at), "dd MMM yyyy, hh:mm a") : 'Now'}
                 </p>
               </div>
               <CampaignStatusBadge status={campaign.status} />
