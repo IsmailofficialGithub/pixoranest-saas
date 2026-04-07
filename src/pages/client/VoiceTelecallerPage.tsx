@@ -124,12 +124,12 @@ export default function VoiceTelecallerPage() {
   async function fetchBotStatus() {
     if (!client) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('outboundagents')
         .select('id, provider_agent_id, provider_from_number_id')
         .eq('owner_user_id', client.user_id)
         .maybeSingle();
-      
+
       if (error) throw error;
       setHasBot(!!data && !!data.provider_agent_id && !!data.provider_from_number_id);
     } catch (err) {
@@ -145,12 +145,12 @@ export default function VoiceTelecallerPage() {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
     const [callsRes, leadsRes] = await Promise.all([
-      supabase
+      (supabase as any)
         .from("outbound_call_logs")
         .select("call_status")
         .eq("owner_user_id", client.user_id)
         .gte("created_at", monthStart),
-      supabase
+      (supabase as any)
         .from("outbound_leads")
         .select("id", { count: "exact", head: true })
         .eq("owner_user_id", client.user_id)
@@ -171,7 +171,7 @@ export default function VoiceTelecallerPage() {
 
   async function fetchCampaigns() {
     if (!client) return;
-    const { data } = await supabase.from("outbound_contact_lists")
+    const { data } = await (supabase as any).from("outbound_contact_lists")
       .select(`id, name, description, created_at`)
       .eq("owner_user_id", client.user_id)
       .order("created_at", { ascending: false });
@@ -191,7 +191,7 @@ export default function VoiceTelecallerPage() {
 
   async function fetchRecentCalls() {
     if (!client) return;
-    const { data } = await supabase.from("outbound_call_logs")
+    const { data } = await (supabase as any).from("outbound_call_logs")
       .select("id, phone, name, duration, transcript, call_url, call_type, call_status, created_at")
       .eq("owner_user_id", client.user_id)
       .order("created_at", { ascending: false })
@@ -201,7 +201,7 @@ export default function VoiceTelecallerPage() {
       const mapped = data.map((d: any) => ({
         id: d.id,
         phone_number: d.phone,
-        duration_seconds: parseInt(d.duration) || 0,
+        duration_seconds: parseDurationToSeconds(d.duration),
         status: d.call_status || 'unknown',
         ai_summary: d.transcript,
         executed_at: d.created_at,
@@ -215,7 +215,7 @@ export default function VoiceTelecallerPage() {
 
   async function fetchOutboundLeads() {
     if (!client) return;
-    const { data } = await supabase.from("outbound_leads")
+    const { data } = await (supabase as any).from("outbound_leads")
       .select(`
         id, status, notes, created_at,
         outbound_call_logs ( id, transcript, phone, name )
@@ -792,7 +792,7 @@ function CampaignCard({
     if (!confirm("Are you sure you want to delete this campaign? this will wipe all calls queues.")) return;
     setIsUpdating(true);
     try {
-      const { error } = await supabase.from("outbound_contact_lists").delete().eq("id", campaign.id);
+      const { error } = await (supabase as any).from("outbound_contact_lists").delete().eq("id", campaign.id);
       if (error) throw error;
       toast.success("Campaign deleted successfully");
     } catch (err: any) {
@@ -875,11 +875,55 @@ function CallStatusBadge({ status }: { status: string }) {
 
 function formatDuration(seconds: any): string {
   const totalSeconds = Number(seconds);
-  if (!totalSeconds || isNaN(totalSeconds)) return "0s";
+  if (isNaN(totalSeconds) || totalSeconds <= 0) return "0s";
 
-  const m = Math.floor(totalSeconds / 60);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
   const s = Math.floor(totalSeconds % 60);
+
+  if (h > 0) return `${h}h ${m}m ${s}s`;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+/**
+ * Parses duration strings like "00:49", "01:23:45", or "0.00:52.00" into total seconds.
+ */
+function parseDurationToSeconds(duration: any): number {
+  if (!duration) return 0;
+  if (typeof duration === 'number') return Math.floor(duration);
+
+  const str = String(duration).trim();
+  if (!str) return 0;
+
+  // Handle "MM:SS" or "HH:MM:SS" or "DAYS.HH:MM:SS"
+  if (str.includes(':')) {
+    const parts = str.split(':');
+    let totalSeconds = 0;
+
+    // Reverse parts so we process seconds, then minutes, then hours
+    const reversedParts = [...parts].reverse();
+
+    // Seconds (can have decimals/ms)
+    if (reversedParts[0]) {
+      totalSeconds += parseFloat(reversedParts[0]) || 0;
+    }
+
+    // Minutes
+    if (reversedParts[1]) {
+      totalSeconds += (parseFloat(reversedParts[1]) || 0) * 60;
+    }
+
+    // Hours
+    if (reversedParts[2]) {
+      // Handle cases like "0.00" as hours or "1.00"
+      totalSeconds += (parseFloat(reversedParts[2]) || 0) * 3600;
+    }
+
+    return Math.floor(totalSeconds);
+  }
+
+  // If no colon, try to parse as number
+  return Math.floor(parseFloat(str)) || 0;
 }
 
 function LoadingSkeleton() {
