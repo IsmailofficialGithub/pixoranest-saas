@@ -87,7 +87,9 @@ export default function WhatsAppPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [campaigns, setCampaigns] = useState<WACampaign[]>([]);
   const [recentMessages, setRecentMessages] = useState<WAMessage[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshingTemplates, setIsRefreshingTemplates] = useState(false);
   const [campaignTab, setCampaignTab] = useState("all");
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [campaignWizardOpen, setCampaignWizardOpen] = useState(false);
@@ -96,15 +98,48 @@ export default function WhatsAppPage() {
   const [workflowInstance, setWorkflowInstance] = useState<any>(null);
   const [assignedBots, setAssignedBots] = useState<any[]>([]);
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+
+  // Message Sending State (elevated to allow pre-filling from templates)
+  const [phone, setPhone] = useState("");
+  const [messageType, setMessageType] = useState("text");
+  const [content, setContent] = useState("");
+  const [templateName, setTemplateName] = useState("");
 
   const waService = assignedServices.find(s => s.service_slug === "whatsapp-automation");
 
   const fetchAll = useCallback(async () => {
     if (!client) return;
     setIsLoading(true);
-    await Promise.all([fetchStats(), fetchCampaigns(), fetchRecentMessages(), fetchAnalytics(), fetchWorkflow()]);
+    await Promise.all([
+      fetchStats(), 
+      fetchCampaigns(), 
+      fetchRecentMessages(), 
+      fetchAnalytics(), 
+      fetchWorkflow(),
+      fetchAssignedBots()
+    ]);
     setIsLoading(false);
   }, [client]);
+
+  useEffect(() => {
+    if (selectedAppId) {
+      fetchTemplates(selectedAppId);
+    }
+  }, [selectedAppId]);
+
+  async function fetchTemplates(appId: string) {
+    try {
+      setIsRefreshingTemplates(true);
+      const { getWhatsAppTemplates } = await import("@/utils/whatsapp");
+      const data = await getWhatsAppTemplates(appId);
+      setTemplates(data);
+    } catch (error) {
+      console.error("Failed to fetch templates:", error);
+    } finally {
+      setIsRefreshingTemplates(false);
+    }
+  }
 
   async function fetchStats() {
     if (!client) return;
@@ -283,8 +318,20 @@ export default function WhatsAppPage() {
           <p className="text-sm text-muted-foreground mt-1">Send bulk messages and automate conversations</p>
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {assignedBots.length > 1 && (
+            <Select value={selectedAppId || ""} onValueChange={setSelectedAppId}>
+              <SelectTrigger className="w-[180px] h-9 bg-background border-muted-foreground/20">
+                <SelectValue placeholder="Select Bot" />
+              </SelectTrigger>
+              <SelectContent>
+                {assignedBots.map(bot => (
+                  <SelectItem key={bot.id} value={bot.id}>{bot.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Badge variant="outline" className="text-xs py-1 px-3">
-            {waService.usage_consumed} / {waService.usage_limit} messages used
+            {waService?.usage_consumed ?? 0} / {waService?.usage_limit ?? 0} messages used
           </Badge>
           <Button variant="outline" size="sm" onClick={() => setCampaignWizardOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Campaign
@@ -307,7 +354,7 @@ export default function WhatsAppPage() {
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <QuickAction icon={<MessageSquare className="h-5 w-5" />} label="Send Single Message" sub="Send to one contact" onClick={() => setSendModalOpen(true)} />
         <QuickAction icon={<Users className="h-5 w-5" />} label="Bulk Campaign" sub="Send to multiple contacts" onClick={() => setCampaignWizardOpen(true)} />
-        <QuickAction icon={<FileText className="h-5 w-5" />} label="Message Templates" sub="Pre-approved templates" onClick={() => {}} />
+        <QuickAction icon={<FileText className="h-5 w-5" />} label="Message Templates" sub="Pre-approved templates" onClick={() => document.getElementById("wa-templates")?.scrollIntoView({ behavior: "smooth" })} />
         <QuickAction icon={<BarChart3 className="h-5 w-5" />} label="Analytics" sub="Message performance" onClick={() => document.getElementById("wa-analytics")?.scrollIntoView({ behavior: "smooth" })} />
       </div>
 
@@ -424,6 +471,80 @@ export default function WhatsAppPage() {
         </CardContent>
       </Card>
 
+      {/* Templates Section */}
+      <Card id="wa-templates">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Message Templates
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Manage pre-approved WhatsApp templates</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => setTemplateModalOpen(true)}>
+              <Plus className="h-3 w-3 mr-1" /> Create
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => selectedAppId && fetchTemplates(selectedAppId)} disabled={isRefreshingTemplates}>
+              <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshingTemplates ? "animate-spin" : ""}`} /> 
+              Sync
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {templates.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {templates.map((tpl: any, i) => {
+                // Find body content
+                let body = "—";
+                if (tpl.components && Array.isArray(tpl.components)) {
+                  body = tpl.components.find((c: any) => c.type === 'BODY')?.text || "—";
+                } else {
+                  body = tpl.body || tpl.content || "—";
+                }
+                
+                return (
+                  <div key={i} className="border rounded-lg p-4 space-y-3 relative group overflow-hidden">
+                    <div className="flex items-center justify-between mb-1">
+                      <Badge variant="outline" className="text-[10px]">{tpl.category || "General"}</Badge>
+                      <span className="text-[10px] text-muted-foreground">{tpl.language || tpl.language_code || "en"}</span>
+                    </div>
+                    <h4 className="font-semibold text-sm truncate">{tpl.name || tpl.template_name}</h4>
+                    <p className="text-xs text-muted-foreground line-clamp-4 bg-muted/30 p-2 rounded whitespace-pre-wrap">
+                      {body}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Badge className="text-[9px] h-4 bg-green-100 text-green-700 hover:bg-green-100 shadow-none border-green-200">
+                        {tpl.status || "Approved"}
+                      </Badge>
+                    </div>
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
+                        setTemplateName(tpl.name || tpl.template_name);
+                        setMessageType("template");
+                        setContent(body);
+                        setSendModalOpen(true);
+                      }}>
+                        <Send className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
+              <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-20" />
+              <p className="text-sm text-muted-foreground font-medium">No templates available</p>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">Sync templates from your WhatsApp portal to use them here.</p>
+              <Button size="sm" variant="outline" onClick={() => selectedAppId && fetchTemplates(selectedAppId)} disabled={isRefreshingTemplates}>
+                <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshingTemplates ? "animate-spin" : ""}`} /> Sync Templates
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Analytics */}
       <div id="wa-analytics" className="space-y-4">
         <h2 className="text-lg font-semibold text-foreground">Analytics</h2>
@@ -476,17 +597,33 @@ export default function WhatsAppPage() {
         assignedBots={assignedBots}
         selectedAppId={selectedAppId}
         onAppChange={setSelectedAppId}
+        phone={phone}
+        setPhone={setPhone}
+        messageType={messageType}
+        setMessageType={setMessageType}
+        content={content}
+        setContent={setContent}
+        templateName={templateName}
+        setTemplateName={setTemplateName}
+        templates={templates}
+      />
+      <CreateTemplateModalWA
+        open={templateModalOpen}
+        onOpenChange={setTemplateModalOpen}
+        selectedAppId={selectedAppId}
+        onCreated={() => selectedAppId && fetchTemplates(selectedAppId)}
       />
       <CreateCampaignWizardWA 
         open={campaignWizardOpen} 
         onOpenChange={setCampaignWizardOpen} 
         clientId={client?.id || ""} 
-        usageLimit={waService.usage_limit} 
-        usageConsumed={waService.usage_consumed} 
-        onCreated={() => { fetchCampaigns(); fetchStats(); }}
+        usageLimit={waService?.usage_limit ?? 0}
+        usageConsumed={waService?.usage_consumed ?? 0}
+        onCreated={fetchAll}
         webhookUrl={workflowInstance?.webhook_url}
         workflowInstanceId={workflowInstance?.id}
         selectedAppId={selectedAppId}
+        templates={templates}
       />
     </div>
   );
@@ -611,7 +748,10 @@ function maskPhone(phone: string): string {
 }
 
 /* ─── Send Message Modal ─── */
-function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, workflowInstanceId, assignedBots, selectedAppId, onAppChange }: { 
+function SendMessageModal({ 
+  open, onOpenChange, clientId, onSent, webhookUrl, workflowInstanceId, assignedBots, selectedAppId, onAppChange,
+  phone, setPhone, messageType, setMessageType, content, setContent, templateName, setTemplateName, templates 
+}: { 
   open: boolean; 
   onOpenChange: (v: boolean) => void; 
   clientId: string; 
@@ -621,15 +761,37 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
   assignedBots: any[];
   selectedAppId: string | null;
   onAppChange: (id: string) => void;
+  phone: string;
+  setPhone: (v: string) => void;
+  messageType: string;
+  setMessageType: (v: string) => void;
+  content: string;
+  setContent: (v: string) => void;
+  templateName: string;
+  setTemplateName: (v: string) => void;
+  templates: any[];
 }) {
   const { toast } = useToast();
-  const [phone, setPhone] = useState("");
-  const [messageType, setMessageType] = useState("text");
-  const [content, setContent] = useState("");
-  const [templateName, setTemplateName] = useState("");
   const [sending, setSending] = useState(false);
+  const [variables, setVariables] = useState<Record<string, string>>({});
 
-  const reset = () => { setPhone(""); setContent(""); setMessageType("text"); setTemplateName(""); };
+  const reset = () => { setPhone(""); setContent(""); setMessageType("text"); setTemplateName(""); setVariables({}); };
+
+  const detectedVariables = useMemo(() => {
+    if (messageType !== "template") return [];
+    const matches = content.match(/{{(\d+)}}/g) || [];
+    return [...new Set(matches)].sort(); // unique variables
+  }, [content, messageType]);
+
+  const previewContent = useMemo(() => {
+    let text = content;
+    if (messageType === "template") {
+      Object.entries(variables).forEach(([key, val]) => {
+        text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val || `{{${key}}}`);
+      });
+    }
+    return text;
+  }, [content, variables, messageType]);
 
   const handleSend = async () => {
     if (!phone.trim() || !content.trim()) {
@@ -644,10 +806,21 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
     try {
       // 2. Send REAL WhatsApp message if it's an API provider
       if (bot && bot.provider_type === 'api') {
+        const tpl = templates.find(t => (t.name || t.template_name) === templateName);
+        
         await sendWhatsAppMessage({
           to: phone.trim(),
-          body: content.trim(),
+          body: previewContent,
           application_id: bot.id,
+          phoneNoId: bot.api_config?.phone_id,
+          baseUrl: bot.api_config?.panel_url,
+          type: messageType,
+          name: templateName,
+          language: tpl?.language || tpl?.language_code || "en_US",
+          bodyParams: detectedVariables.map(v => {
+            const key = v.replace(/[{}]/g, '');
+            return variables[key] || "";
+          })
         }, bot.api_config?.api_key);
         
         toast({ title: "Message sent!", description: "WhatsApp message delivered." });
@@ -658,7 +831,7 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
           application_id: selectedAppId,
           phone_number: phone.trim(),
           message_type: messageType as any,
-          message_content: content.trim(),
+          message_content: previewContent,
           template_name: messageType === "template" ? templateName : null,
           status: "queued",
         });
@@ -735,21 +908,72 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
           </div>
           {messageType === "template" && (
             <div>
-              <Label>Template Name</Label>
-              <Input placeholder="e.g., welcome_message" value={templateName} onChange={e => setTemplateName(e.target.value)} />
+              <Label>Select Template</Label>
+              <Select value={templateName} onValueChange={(val) => {
+                setTemplateName(val);
+                setVariables({});
+                const tpl = templates.find(t => (t.name || t.template_name) === val);
+                if (tpl) {
+                  let body = "";
+                  if (tpl.components && Array.isArray(tpl.components)) {
+                    body = tpl.components.find((c: any) => c.type === 'BODY')?.text || "";
+                  } else {
+                    body = tpl.body || tpl.content || "";
+                  }
+                  setContent(body);
+                }
+              }}>
+                <SelectTrigger><SelectValue placeholder="Choose a template" /></SelectTrigger>
+                <SelectContent>
+                  {templates.map((tpl, i) => (
+                    <SelectItem key={i} value={tpl.name || tpl.template_name}>{tpl.name || tpl.template_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
+
+          {/* Variables Section */}
+          {messageType === "template" && detectedVariables.length > 0 && (
+            <div className="space-y-3 p-3 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/20">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Template Variables</Label>
+              <div className="grid gap-3">
+                {detectedVariables.map((v, i) => {
+                  const key = v.replace(/[{}]/g, '');
+                  return (
+                    <div key={i} className="grid grid-cols-4 items-center gap-2">
+                      <Label className="text-right text-[10px] font-mono text-muted-foreground">{v}</Label>
+                      <Input 
+                        className="col-span-3 h-8 text-xs" 
+                        placeholder={`Value for ${v}`} 
+                        value={variables[key] || ""} 
+                        onChange={e => setVariables(prev => ({ ...prev, [key]: e.target.value }))}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
-            <Label>Message</Label>
-            <Textarea placeholder="Type your message..." value={content} onChange={e => setContent(e.target.value)} rows={4} maxLength={4096} />
-            <p className="text-[10px] text-muted-foreground mt-1 text-right">{content.length} / 4096</p>
+            <Label>{messageType === "template" ? "Template Context" : "Message"}</Label>
+            <Textarea 
+              placeholder="Type your message..." 
+              value={content} 
+              onChange={e => setContent(e.target.value)} 
+              rows={4} 
+              maxLength={4096} 
+              readOnly={messageType === "template"} 
+              className={messageType === "template" ? "bg-muted/50 text-[11px]" : ""}
+            />
           </div>
           {/* Preview */}
-          {content && (
-            <div>
-              <Label className="text-xs">Preview</Label>
-              <div className="bg-[#dcf8c6] rounded-lg p-3 ml-auto max-w-[80%] text-sm mt-1 shadow-sm">
-                <p className="whitespace-pre-wrap text-foreground">{content}</p>
+          {previewContent && (
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase text-muted-foreground">Real-time Preview</Label>
+              <div className="bg-[#dcf8c6] rounded-lg p-3 ml-auto max-w-[90%] text-sm shadow-sm border border-[#c3e1aa]">
+                <p className="whitespace-pre-wrap text-foreground leading-relaxed">{previewContent}</p>
                 <p className="text-[9px] text-muted-foreground text-right mt-1">{format(new Date(), "h:mm a")}</p>
               </div>
             </div>
@@ -766,28 +990,150 @@ function SendMessageModal({ open, onOpenChange, clientId, onSent, webhookUrl, wo
   );
 }
 
+/* ─── Create Template Modal ─── */
+function CreateTemplateModalWA({ open, onOpenChange, selectedAppId, onCreated }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  selectedAppId: string | null;
+  onCreated: () => void;
+}) {
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("MARKETING");
+  const [language, setLanguage] = useState("en");
+  const [body, setBody] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const reset = () => { setName(""); setCategory("MARKETING"); setLanguage("en"); setBody(""); };
+
+  const handleSubmit = async () => {
+    if (!selectedAppId) return;
+    if (!name.trim() || !body.trim()) {
+      toast({ title: "Validation Error", description: "Name and Body are required.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const { createWhatsAppTemplate } = await import("@/utils/whatsapp");
+      
+      const templateData = {
+        name: name.trim().toLowerCase().replace(/\s+/g, '_'),
+        category,
+        language,
+        components: [
+          {
+            type: "BODY",
+            text: body.trim()
+          }
+        ]
+      };
+
+      await createWhatsAppTemplate(selectedAppId, templateData);
+      
+      toast({ title: "Template Created", description: "Your template has been submitted for approval." });
+      onCreated();
+      onOpenChange(false);
+      reset();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to create template", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Create Template</DialogTitle>
+          <DialogDescription>Submit a new message template to Meta for approval.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="grid gap-2">
+            <Label htmlFor="tpl-name">Template Name</Label>
+            <Input id="tpl-name" placeholder="e.g. welcome_message" value={name} onChange={e => setName(e.target.value)} />
+            <p className="text-[10px] text-muted-foreground">Lowercase, no spaces. Example: holiday_promotion</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label>Category</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MARKETING">Marketing</SelectItem>
+                  <SelectItem value="UTILITY">Utility</SelectItem>
+                  <SelectItem value="AUTHENTICATION">Authentication</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Language</Label>
+              <Select value={language} onValueChange={setLanguage}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English (en)</SelectItem>
+                  <SelectItem value="en_US">English US (en_US)</SelectItem>
+                  <SelectItem value="hi">Hindi (hi)</SelectItem>
+                  <SelectItem value="es">Spanish (es)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="tpl-body">Message Body</Label>
+            <Textarea 
+              id="tpl-body" 
+              placeholder="Enter your template message content..." 
+              value={body} 
+              onChange={e => setBody(e.target.value)}
+              rows={5}
+            />
+            <p className="text-[10px] text-muted-foreground">Use {"{{1}}"}, {"{{2}}"} for variables.</p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={isSubmitting} onClick={handleSubmit} style={{ backgroundColor: "#25D366", color: "white" }}>
+            {isSubmitting ? "Creating..." : "Submit Template"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ─── Campaign Wizard ─── */
-function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usageConsumed, onCreated, webhookUrl, workflowInstanceId, selectedAppId }: {
+function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usageConsumed, onCreated, webhookUrl, workflowInstanceId, selectedAppId, templates }: {
   open: boolean; onOpenChange: (v: boolean) => void; clientId: string;
   usageLimit: number; usageConsumed: number; onCreated: () => void;
   webhookUrl?: string;
   workflowInstanceId?: string;
   selectedAppId: string | null;
+  templates: any[];
 }) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [scheduleType, setScheduleType] = useState<"now" | "later">("now");
   const [scheduledAt, setScheduledAt] = useState("");
-  const [contacts, setContacts] = useState<{ phone: string; name?: string }[]>([]);
+  const [contacts, setContacts] = useState<{ phone: string; name?: string; row?: any }[]>([]);
+  const [messageType, setMessageType] = useState<"text" | "template">("text");
+  const [templateName, setTemplateName] = useState("");
   const [messageContent, setMessageContent] = useState("");
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [csvColumns, setCsvColumns] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [manualPhone, setManualPhone] = useState("");
 
   const remaining = usageLimit - usageConsumed;
-  const canLaunch = contacts.length > 0 && contacts.length <= remaining && name.trim() && messageContent.trim();
+  const canLaunch = contacts.length > 0 && contacts.length <= remaining && name.trim() && (messageType === "text" ? messageContent.trim() : templateName);
 
-  const reset = () => { setStep(1); setName(""); setScheduleType("now"); setScheduledAt(""); setContacts([]); setMessageContent(""); setManualPhone(""); };
+  const reset = () => { 
+    setStep(1); setName(""); setScheduleType("now"); setScheduledAt(""); 
+    setContacts([]); setMessageType("text"); setTemplateName(""); 
+    setMessageContent(""); setMapping({}); setCsvColumns([]); setManualPhone(""); 
+  };
 
   const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -796,9 +1142,13 @@ function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usag
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
+        if (results.meta && results.meta.fields) {
+          setCsvColumns(results.meta.fields);
+        }
         const parsed = results.data.map((row: any) => ({
           phone: row.phone || row.Phone || row.phone_number || "",
           name: row.name || row.Name || row.contact_name || undefined,
+          row: row // store full row for variable mapping
         })).filter((c: any) => c.phone);
         setContacts(parsed);
         toast({ title: `${parsed.length} contacts imported` });
@@ -819,6 +1169,7 @@ function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usag
       client_id: clientId,
       campaign_name: name.trim(),
       message_template: messageContent.trim(),
+      template_name: messageType === "template" ? templateName : null,
       total_contacts: contacts.length,
       status: scheduleType === "now" ? "sending" : "scheduled",
       scheduled_at: scheduleType === "later" ? scheduledAt : null,
@@ -830,16 +1181,43 @@ function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usag
       return;
     }
 
+    const tpl = templates.find(t => (t.name || t.template_name) === templateName);
+    
     // Insert messages for each contact
-    const messages = contacts.map(c => ({
-      client_id: clientId,
-      application_id: selectedAppId,
-      campaign_id: data.id,
-      phone_number: c.phone,
-      message_content: messageContent.trim(),
-      message_type: "text" as const,
-      status: "queued" as const,
-    }));
+    const messages = contacts.map(c => {
+      let finalContent = messageContent.trim();
+      let bodyParams: string[] = [];
+
+      if (messageType === "template") {
+        const matches = messageContent.match(/{{(\d+)}}/g) || [];
+        const vars = [...new Set(matches)].sort();
+        
+        bodyParams = vars.map(v => {
+          const key = v.replace(/[{}]/g, '');
+          const mappedCol = mapping[key];
+          const val = mappedCol && c.row ? c.row[mappedCol] : "";
+          // Update finalContent for local preview in DB
+          finalContent = finalContent.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val || v);
+          return val || "";
+        });
+      }
+
+      return {
+        client_id: clientId,
+        application_id: selectedAppId,
+        campaign_id: data.id,
+        phone_number: c.phone,
+        message_content: finalContent,
+        message_type: messageType as any,
+        template_name: messageType === "template" ? templateName : null,
+        // We'll store metadata for the actual sending process
+        metadata: messageType === "template" ? { 
+          bodyParams, 
+          language: tpl?.language || tpl?.language_code || "en_US" 
+        } : null,
+        status: "queued" as const,
+      };
+    });
 
     // Batch insert in chunks
     for (let i = 0; i < messages.length; i += 100) {
@@ -935,14 +1313,84 @@ function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usag
         {step === 3 && (
           <div className="space-y-4">
             <div>
-              <Label>Message</Label>
-              <Textarea placeholder="Type your message..." value={messageContent} onChange={e => setMessageContent(e.target.value)} rows={5} maxLength={4096} />
-              <p className="text-[10px] text-muted-foreground mt-1 text-right">{messageContent.length} / 4096</p>
+              <Label>Message Type</Label>
+              <Select value={messageType} onValueChange={(v: any) => { setMessageType(v); setMessageContent(""); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text">Direct Text</SelectItem>
+                  <SelectItem value="template">WhatsApp Template</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {messageType === "template" ? (
+              <div className="space-y-4">
+                <div>
+                  <Label>Select Template</Label>
+                  <Select value={templateName} onValueChange={(val) => {
+                    setTemplateName(val);
+                    const tpl = templates.find(t => (t.name || t.template_name) === val);
+                    if (tpl) {
+                      const body = tpl.components?.find((c: any) => c.type === 'BODY')?.text || tpl.body || tpl.content || "";
+                      setMessageContent(body);
+                    }
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Choose a template" /></SelectTrigger>
+                    <SelectContent>
+                      {templates.map((tpl, i) => (
+                        <SelectItem key={i} value={tpl.name || tpl.template_name}>{tpl.name || tpl.template_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Variable Mapping */}
+                {(() => {
+                  const matches = messageContent.match(/{{(\d+)}}/g) || [];
+                  const vars = [...new Set(matches)].sort();
+                  if (vars.length === 0) return null;
+                  
+                  return (
+                    <div className="p-3 border rounded-lg bg-muted/30 space-y-3">
+                      <Label className="text-xs font-semibold">Map Variables to CSV Columns</Label>
+                      {vars.map((v, i) => {
+                        const key = v.replace(/[{}]/g, '');
+                        return (
+                          <div key={i} className="grid grid-cols-2 gap-2 items-center">
+                            <span className="text-[10px] font-mono text-muted-foreground">{v}</span>
+                            <Select value={mapping[key] || ""} onValueChange={(val) => setMapping(prev => ({ ...prev, [key]: val }))}>
+                              <SelectTrigger className="h-8 text-[10px]">
+                                <SelectValue placeholder="Select Column" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {csvColumns.map((col, idx) => (
+                                  <SelectItem key={idx} value={col}>{col}</SelectItem>
+                                ))}
+                                <SelectItem value="__manual__">Fixed Value</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div>
+                <Label>Message Body</Label>
+                <Textarea placeholder="Type your message..." value={messageContent} onChange={e => setMessageContent(e.target.value)} rows={5} maxLength={4096} />
+                <p className="text-[10px] text-muted-foreground mt-1 text-right">{messageContent.length} / 4096</p>
+              </div>
+            )}
+
             {messageContent && (
               <div>
                 <Label className="text-xs">Preview</Label>
-                <div className="bg-[#dcf8c6] rounded-lg p-3 ml-auto max-w-[80%] text-sm mt-1 shadow-sm">
+                <div className="bg-[#dcf8c6] rounded-lg p-3 ml-auto max-w-[80%] text-sm mt-1 shadow-sm border border-[#c3e1aa]">
+                   {messageType === "template" && (
+                    <div className="text-[10px] text-green-700 italic mb-1 uppercase tracking-tighter font-bold">Template: {templateName}</div>
+                   )}
                   <p className="whitespace-pre-wrap text-foreground">{messageContent}</p>
                 </div>
               </div>
