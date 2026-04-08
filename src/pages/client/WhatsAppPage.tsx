@@ -10,7 +10,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { sendWhatsAppMessage } from "@/utils/whatsapp";
+import {
+  WHATSAPP_API_URL,
+  getWhatsAppTemplates,
+  updateMessageStatus,
+  sendWhatsAppMessage,
+  syncWhatsAppTemplates,
+  createWhatsAppTemplate,
+} from "@/utils/whatsapp";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -30,7 +37,7 @@ import {
   MessageCircle, CheckCircle, CheckCheck, Zap, MessageSquare,
   Users, FileText, BarChart3, MoreVertical, Plus, Send,
   Clock, X, ArrowRight, Upload, Eye, RefreshCw, Trash2,
-  Copy, Pause, Play,
+  Copy, Pause, Play, Video, Headset
 } from "lucide-react";
 import { formatDistanceToNow, format, startOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -79,9 +86,25 @@ interface Stats {
   activeCampaigns: number;
 }
 
+/* ─── Loading Skeleton ─── */
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between"><Skeleton className="h-8 w-48" /><Skeleton className="h-9 w-36" /></div>
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
+      </div>
+      <Skeleton className="h-48" />
+      <Skeleton className="h-64" />
+    </div>
+  );
+}
+
+const PIE_COLORS = ["#25D366", "#22c55e", "#3b82f6", "#ef4444", "#a3a3a3"];
+
 /* ─── Main Component ─── */
 export default function WhatsAppPage() {
-  const { client, assignedServices, isLoading: contextLoading, primaryColor } = useClient();
+  const { client, assignedServices, isLoading: contextLoading, primaryColor, refetchClient } = useClient();
   const { toast } = useToast();
 
   const [stats, setStats] = useState<Stats | null>(null);
@@ -100,48 +123,16 @@ export default function WhatsAppPage() {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
 
-  // Message Sending State (elevated to allow pre-filling from templates)
+  // Message Sending State
   const [phone, setPhone] = useState("");
   const [messageType, setMessageType] = useState("text");
   const [content, setContent] = useState("");
   const [templateName, setTemplateName] = useState("");
+  const [selectedLanguage, setSelectedLanguage] = useState("en_US");
 
   const waService = assignedServices.find(s => s.service_slug === "whatsapp-automation");
 
-  const fetchAll = useCallback(async () => {
-    if (!client) return;
-    setIsLoading(true);
-    await Promise.all([
-      fetchStats(), 
-      fetchCampaigns(), 
-      fetchRecentMessages(), 
-      fetchAnalytics(), 
-      fetchWorkflow(),
-      fetchAssignedBots()
-    ]);
-    setIsLoading(false);
-  }, [client]);
-
-  useEffect(() => {
-    if (selectedAppId) {
-      fetchTemplates(selectedAppId);
-    }
-  }, [selectedAppId]);
-
-  async function fetchTemplates(appId: string) {
-    try {
-      setIsRefreshingTemplates(true);
-      const { getWhatsAppTemplates } = await import("@/utils/whatsapp");
-      const data = await getWhatsAppTemplates(appId);
-      setTemplates(data);
-    } catch (error) {
-      console.error("Failed to fetch templates:", error);
-    } finally {
-      setIsRefreshingTemplates(false);
-    }
-  }
-
-  async function fetchStats() {
+  const fetchStats = useCallback(async () => {
     if (!client) return;
     const monthStart = startOfMonth(new Date()).toISOString();
 
@@ -172,9 +163,9 @@ export default function WhatsAppPage() {
       readCount,
       activeCampaigns: campaignsRes.count || 0,
     });
-  }
+  }, [client]);
 
-  async function fetchCampaigns() {
+  const fetchCampaigns = useCallback(async () => {
     if (!client) return;
     const { data } = await supabase
       .from("whatsapp_campaigns")
@@ -182,9 +173,9 @@ export default function WhatsAppPage() {
       .eq("client_id", client.id)
       .order("created_at", { ascending: false });
     setCampaigns((data as WACampaign[]) || []);
-  }
+  }, [client]);
 
-  async function fetchWorkflow() {
+  const fetchWorkflow = useCallback(async () => {
     if (!client || !waService) return;
     const { data } = await supabase
       .from("client_workflow_instances")
@@ -193,13 +184,12 @@ export default function WhatsAppPage() {
       .eq("service_id", waService.service_id)
       .maybeSingle();
     setWorkflowInstance(data);
-  }
+  }, [client, waService]);
 
-  async function fetchAssignedBots() {
+  const fetchAssignedBots = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    // Fetch bots the user has access to
     const { data, error } = await (supabase.from("whatsapp_user_access" as any) as any)
       .select("application_id, whatsapp_applications(*)")
       .eq("user_id", user.id);
@@ -211,9 +201,9 @@ export default function WhatsAppPage() {
         setSelectedAppId(bots[0].id);
       }
     }
-  }
+  }, [selectedAppId]);
 
-  async function fetchRecentMessages() {
+  const fetchRecentMessages = useCallback(async () => {
     if (!client) return;
     const { data } = await supabase
       .from("whatsapp_messages")
@@ -224,7 +214,6 @@ export default function WhatsAppPage() {
 
     if (!data) { setRecentMessages([]); return; }
 
-    // Get campaign names
     const campaignIds = [...new Set(data.filter(m => m.campaign_id).map(m => m.campaign_id!))];
     let campaignMap = new Map<string, string>();
     if (campaignIds.length > 0) {
@@ -239,9 +228,9 @@ export default function WhatsAppPage() {
       ...m,
       campaign_name: m.campaign_id ? campaignMap.get(m.campaign_id) : undefined,
     })) as WAMessage[]);
-  }
+  }, [client]);
 
-  async function fetchAnalytics() {
+  const fetchAnalytics = useCallback(async () => {
     if (!client) return;
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -258,7 +247,6 @@ export default function WhatsAppPage() {
       return;
     }
 
-    // Group by day
     const dayMap = new Map<string, { sent: number; delivered: number; read: number }>();
     data.forEach(m => {
       if (!m.sent_at) return;
@@ -271,20 +259,58 @@ export default function WhatsAppPage() {
     });
     setAnalyticsData(Array.from(dayMap.entries()).map(([day, v]) => ({ day, ...v })));
 
-    // Status distribution
     const statusMap = new Map<string, number>();
     data.forEach(m => {
       statusMap.set(m.status || "queued", (statusMap.get(m.status || "queued") || 0) + 1);
     });
     setStatusDistribution(Array.from(statusMap.entries()).map(([name, value]) => ({ name, value })));
-  }
+  }, [client]);
+
+  const fetchTemplates = useCallback(async (appId: string) => {
+    try {
+      setIsRefreshingTemplates(true);
+      const bot = assignedBots.find(b => b.id === appId);
+      if (bot && bot.provider_type === 'api') {
+        try {
+          await syncWhatsAppTemplates(appId);
+        } catch (syncErr) {
+          console.warn("API Sync failed, showing local templates only:", syncErr);
+        }
+      }
+      const data = await getWhatsAppTemplates(appId);
+      setTemplates(data);
+    } catch (error) {
+      console.error("Failed to fetch templates:", error);
+    } finally {
+      setIsRefreshingTemplates(false);
+    }
+  }, [assignedBots]);
+
+  const fetchAll = useCallback(async () => {
+    if (!client) return;
+    setIsLoading(true);
+    await Promise.all([
+      fetchStats(), 
+      fetchCampaigns(), 
+      fetchRecentMessages(), 
+      fetchAnalytics(), 
+      fetchWorkflow(),
+      fetchAssignedBots()
+    ]);
+    setIsLoading(false);
+  }, [client, fetchStats, fetchCampaigns, fetchRecentMessages, fetchAnalytics, fetchWorkflow, fetchAssignedBots]);
+
+  useEffect(() => {
+    if (selectedAppId) {
+      fetchTemplates(selectedAppId);
+    }
+  }, [selectedAppId, fetchTemplates]);
 
   useEffect(() => {
     if (!client || contextLoading) return;
     if (!waService) return;
     fetchAll();
-    fetchAssignedBots();
-  }, [client, contextLoading, waService]);
+  }, [client, contextLoading, waService, fetchAll]);
 
   // Realtime for campaigns
   useEffect(() => {
@@ -297,7 +323,7 @@ export default function WhatsAppPage() {
       }, () => { fetchCampaigns(); fetchStats(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [client]);
+  }, [client, fetchCampaigns, fetchStats]);
 
   if (contextLoading || isLoading) return <LoadingSkeleton />;
   if (!waService) return <Navigate to="/client" replace />;
@@ -308,7 +334,6 @@ export default function WhatsAppPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -331,7 +356,7 @@ export default function WhatsAppPage() {
             </Select>
           )}
           <Badge variant="outline" className="text-xs py-1 px-3">
-            {waService?.usage_consumed ?? 0} / {waService?.usage_limit ?? 0} messages used
+            {Math.max(stats?.total || 0, waService?.usage_consumed || 0)} / {waService?.usage_limit || 0} messages used
           </Badge>
           <Button variant="outline" size="sm" onClick={() => setCampaignWizardOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Campaign
@@ -342,7 +367,6 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <StatsCard icon={<MessageCircle className="h-5 w-5" />} color="#25D366" label="Messages Sent" value={stats?.messagesSent ?? 0} subtext="This month" />
         <StatsCard icon={<CheckCircle className="h-5 w-5" />} color="#22c55e" label="Delivery Rate" value={`${stats?.deliveryRate ?? 0}%`} subtext={`${stats?.delivered ?? 0} of ${stats?.total ?? 0}`} />
@@ -350,7 +374,6 @@ export default function WhatsAppPage() {
         <StatsCard icon={<Zap className="h-5 w-5" />} color="#f59e0b" label="Active Campaigns" value={stats?.activeCampaigns ?? 0} subtext="Running now" />
       </div>
 
-      {/* Quick Actions */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <QuickAction icon={<MessageSquare className="h-5 w-5" />} label="Send Single Message" sub="Send to one contact" onClick={() => setSendModalOpen(true)} />
         <QuickAction icon={<Users className="h-5 w-5" />} label="Bulk Campaign" sub="Send to multiple contacts" onClick={() => setCampaignWizardOpen(true)} />
@@ -358,7 +381,6 @@ export default function WhatsAppPage() {
         <QuickAction icon={<BarChart3 className="h-5 w-5" />} label="Analytics" sub="Message performance" onClick={() => document.getElementById("wa-analytics")?.scrollIntoView({ behavior: "smooth" })} />
       </div>
 
-      {/* Campaigns */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-foreground">My Campaigns</h2>
@@ -376,19 +398,6 @@ export default function WhatsAppPage() {
               <div className="space-y-3">
                 {filteredCampaigns.map(c => <CampaignCard key={c.id} campaign={c} onRefresh={fetchCampaigns} />)}
               </div>
-            ) : campaigns.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="rounded-full bg-muted p-5 mb-4">
-                    <MessageCircle className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-1">No campaigns yet</h3>
-                  <p className="text-sm text-muted-foreground max-w-sm mb-6">Create your first WhatsApp campaign to start engaging with customers.</p>
-                  <Button style={{ backgroundColor: "#25D366", color: "white" }} onClick={() => setCampaignWizardOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" /> Create Campaign
-                  </Button>
-                </CardContent>
-              </Card>
             ) : (
               <Card><CardContent className="py-10 text-center"><p className="text-sm text-muted-foreground">No {campaignTab} campaigns.</p></CardContent></Card>
             )}
@@ -396,7 +405,6 @@ export default function WhatsAppPage() {
         </Tabs>
       </div>
 
-      {/* Recent Messages */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-lg">Recent Messages</CardTitle>
@@ -406,194 +414,103 @@ export default function WhatsAppPage() {
         </CardHeader>
         <CardContent>
           {recentMessages.length > 0 ? (
-            <>
-              <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Message</TableHead>
-                      <TableHead>Campaign</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Sent</TableHead>
-                      <TableHead className="w-10"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentMessages.map(m => (
-                      <TableRow key={m.id}>
-                        <TableCell className="font-mono text-sm">{maskPhone(m.phone_number)}</TableCell>
-                        <TableCell><p className="text-xs text-muted-foreground truncate max-w-[200px]">{m.message_content.slice(0, 50)}{m.message_content.length > 50 ? "..." : ""}</p></TableCell>
-                        <TableCell>{m.campaign_name ? <Badge variant="outline" className="text-[10px]">{m.campaign_name}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
-                        <TableCell><MessageStatusBadge status={m.status} /></TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{m.sent_at ? formatDistanceToNow(new Date(m.sent_at), { addSuffix: true }) : "—"}</TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem><Eye className="h-3 w-3 mr-2" /> View Full Message</DropdownMenuItem>
-                              {m.status === "failed" && <DropdownMenuItem><RefreshCw className="h-3 w-3 mr-2" /> Resend</DropdownMenuItem>}
-                              <DropdownMenuItem className="text-destructive"><Trash2 className="h-3 w-3 mr-2" /> Delete</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="space-y-3 md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Message</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Sent</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {recentMessages.map(m => (
-                  <div key={m.id} className="rounded-lg border p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-sm">{maskPhone(m.phone_number)}</span>
-                      <MessageStatusBadge status={m.status} />
-                    </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2">{m.message_content}</p>
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                      {m.campaign_name && <Badge variant="outline" className="text-[10px]">{m.campaign_name}</Badge>}
-                      <span>{m.sent_at ? formatDistanceToNow(new Date(m.sent_at), { addSuffix: true }) : ""}</span>
-                    </div>
-                  </div>
+                  <TableRow key={m.id}>
+                    <TableCell className="font-mono text-sm">{m.phone_number}</TableCell>
+                    <TableCell className="max-w-[200px] truncate text-xs">{m.message_content}</TableCell>
+                    <TableCell><MessageStatusBadge status={m.status} /></TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{m.sent_at ? formatDistanceToNow(new Date(m.sent_at), { addSuffix: true }) : "—"}</TableCell>
+                  </TableRow>
                 ))}
-              </div>
-            </>
+              </TableBody>
+            </Table>
           ) : (
-            <div className="text-center py-10">
-              <MessageCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No messages sent yet</p>
-              <p className="text-xs text-muted-foreground mt-1">Start sending messages to engage with your customers</p>
-              <Button className="mt-4" size="sm" style={{ backgroundColor: "#25D366", color: "white" }} onClick={() => setSendModalOpen(true)}>
-                <Send className="h-4 w-4 mr-1" /> Send First Message
-              </Button>
-            </div>
+            <div className="text-center py-10"><p className="text-sm text-muted-foreground">No messages sent yet</p></div>
           )}
         </CardContent>
       </Card>
 
-      {/* Templates Section */}
       <Card id="wa-templates">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              Message Templates
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Manage pre-approved WhatsApp templates</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => setTemplateModalOpen(true)}>
-              <Plus className="h-3 w-3 mr-1" /> Create
-            </Button>
-            <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => selectedAppId && fetchTemplates(selectedAppId)} disabled={isRefreshingTemplates}>
-              <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshingTemplates ? "animate-spin" : ""}`} /> 
-              Sync
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">Message Templates</CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setTemplateModalOpen(true)}><Plus className="h-4 w-4 mr-1" /> Create</Button>
+            <Button variant="outline" size="sm" onClick={() => selectedAppId && fetchTemplates(selectedAppId)} disabled={isRefreshingTemplates}>
+              <RefreshCw className={`h-4 w-4 mr-1 ${isRefreshingTemplates ? "animate-spin" : ""}`} /> Sync
             </Button>
           </div>
         </CardHeader>
         <CardContent>
           {templates.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {templates.map((tpl: any, i) => {
-                // Find body content
-                let body = "—";
-                if (tpl.components && Array.isArray(tpl.components)) {
-                  body = tpl.components.find((c: any) => c.type === 'BODY')?.text || "—";
-                } else {
-                  body = tpl.body || tpl.content || "—";
-                }
-                
-                return (
-                  <div key={i} className="border rounded-lg p-4 space-y-3 relative group overflow-hidden">
-                    <div className="flex items-center justify-between mb-1">
-                      <Badge variant="outline" className="text-[10px]">{tpl.category || "General"}</Badge>
-                      <span className="text-[10px] text-muted-foreground">{tpl.language || tpl.language_code || "en"}</span>
-                    </div>
-                    <h4 className="font-semibold text-sm truncate">{tpl.name || tpl.template_name}</h4>
-                    <p className="text-xs text-muted-foreground line-clamp-4 bg-muted/30 p-2 rounded whitespace-pre-wrap">
-                      {body}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Badge className="text-[9px] h-4 bg-green-100 text-green-700 hover:bg-green-100 shadow-none border-green-200">
-                        {tpl.status || "Approved"}
-                      </Badge>
-                    </div>
-                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
-                        setTemplateName(tpl.name || tpl.template_name);
-                        setMessageType("template");
-                        setContent(body);
-                        setSendModalOpen(true);
-                      }}>
-                        <Send className="h-3 w-3" />
-                      </Button>
-                    </div>
+              {templates.map((tpl: any, i) => (
+                <div key={i} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Badge variant="outline" className="text-[10px]">{tpl.category}</Badge>
+                    <Badge className="text-[10px] bg-green-100 text-green-700">{tpl.status}</Badge>
                   </div>
-                );
-              })}
+                  <h4 className="font-semibold text-sm">{tpl.name}</h4>
+                  <p className="text-xs text-muted-foreground line-clamp-3">{tpl.components?.find((c: any) => c.type === 'BODY')?.text || tpl.body}</p>
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
-              <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-20" />
-              <p className="text-sm text-muted-foreground font-medium">No templates available</p>
-              <p className="text-xs text-muted-foreground mt-1 mb-4">Sync templates from your WhatsApp portal to use them here.</p>
-              <Button size="sm" variant="outline" onClick={() => selectedAppId && fetchTemplates(selectedAppId)} disabled={isRefreshingTemplates}>
-                <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshingTemplates ? "animate-spin" : ""}`} /> Sync Templates
-              </Button>
-            </div>
+            <div className="text-center py-10 text-muted-foreground">No templates found. Sync to fetch from WhatsApp.</div>
           )}
         </CardContent>
       </Card>
 
-      {/* Analytics */}
-      <div id="wa-analytics" className="space-y-4">
-        <h2 className="text-lg font-semibold text-foreground">Analytics</h2>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm">Messages Over Last 30 Days</CardTitle></CardHeader>
-            <CardContent>
-              {analyticsData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <LineChart data={analyticsData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="day" className="text-xs" tick={{ fontSize: 10 }} />
-                    <YAxis className="text-xs" tick={{ fontSize: 10 }} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="sent" stroke="#25D366" strokeWidth={2} name="Sent" dot={false} />
-                    <Line type="monotone" dataKey="delivered" stroke="#22c55e" strokeWidth={2} name="Delivered" dot={false} />
-                    <Line type="monotone" dataKey="read" stroke="#3b82f6" strokeWidth={2} name="Read" dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : <p className="text-sm text-muted-foreground text-center py-10">No data yet</p>}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm">Status Distribution</CardTitle></CardHeader>
-            <CardContent>
-              {statusDistribution.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie data={statusDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                      {statusDistribution.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                    </Pie>
-                    <Legend />
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : <p className="text-sm text-muted-foreground text-center py-10">No data yet</p>}
-            </CardContent>
-          </Card>
-        </div>
+      <div id="wa-analytics" className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Messages Over Time</CardTitle></CardHeader>
+          <CardContent>
+            {analyticsData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={analyticsData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="day" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="sent" stroke="#25D366" />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : <p className="text-center py-10 text-muted-foreground">No analytics data</p>}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Delivery Distribution</CardTitle></CardHeader>
+          <CardContent>
+            {statusDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie data={statusDistribution} dataKey="value" innerRadius={60} outerRadius={80}>
+                    {statusDistribution.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : <p className="text-center py-10 text-muted-foreground">No distribution data</p>}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Modals */}
       <SendMessageModal 
         open={sendModalOpen} 
         onOpenChange={setSendModalOpen} 
         clientId={client?.id || ""} 
-        onSent={() => { fetchRecentMessages(); fetchStats(); }} 
+        onSent={() => { fetchRecentMessages(); fetchStats(); refetchClient(); }} 
         webhookUrl={workflowInstance?.webhook_url}
-        workflowInstanceId={workflowInstance?.id}
         assignedBots={assignedBots}
         selectedAppId={selectedAppId}
         onAppChange={setSelectedAppId}
@@ -606,22 +523,22 @@ export default function WhatsAppPage() {
         templateName={templateName}
         setTemplateName={setTemplateName}
         templates={templates}
+        selectedLanguage={selectedLanguage}
+        setSelectedLanguage={setSelectedLanguage}
       />
+      
       <CreateTemplateModalWA
         open={templateModalOpen}
         onOpenChange={setTemplateModalOpen}
         selectedAppId={selectedAppId}
         onCreated={() => selectedAppId && fetchTemplates(selectedAppId)}
       />
+
       <CreateCampaignWizardWA 
         open={campaignWizardOpen} 
         onOpenChange={setCampaignWizardOpen} 
         clientId={client?.id || ""} 
-        usageLimit={waService?.usage_limit ?? 0}
-        usageConsumed={waService?.usage_consumed ?? 0}
-        onCreated={fetchAll}
-        webhookUrl={workflowInstance?.webhook_url}
-        workflowInstanceId={workflowInstance?.id}
+        onCreated={() => { fetchCampaigns(); fetchStats(); refetchClient(); }} 
         selectedAppId={selectedAppId}
         templates={templates}
       />
@@ -629,9 +546,7 @@ export default function WhatsAppPage() {
   );
 }
 
-const PIE_COLORS = ["#25D366", "#22c55e", "#3b82f6", "#ef4444", "#a3a3a3"];
-
-/* ─── Sub Components ─── */
+/* ─── Sub-Components ─── */
 
 function StatsCard({ icon, color, label, value, subtext }: { icon: React.ReactNode; color: string; label: string; value: string | number; subtext: string }) {
   return (
@@ -641,9 +556,9 @@ function StatsCard({ icon, color, label, value, subtext }: { icon: React.ReactNo
           <div className="rounded-lg p-2.5" style={{ backgroundColor: `${color}15` }}>
             <div style={{ color }}>{icon}</div>
           </div>
-          <div className="flex-1 min-w-0">
+          <div>
             <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-xl font-bold text-foreground">{value}</p>
+            <p className="text-xl font-bold">{value}</p>
             <p className="text-[10px] text-muted-foreground">{subtext}</p>
           </div>
         </div>
@@ -658,7 +573,7 @@ function QuickAction({ icon, label, sub, onClick }: { icon: React.ReactNode; lab
       <CardContent className="pt-5 pb-4 flex items-start gap-3">
         <div className="rounded-lg bg-muted p-2">{icon}</div>
         <div>
-          <p className="text-sm font-medium text-foreground">{label}</p>
+          <p className="text-sm font-medium">{label}</p>
           <p className="text-xs text-muted-foreground">{sub}</p>
         </div>
       </CardContent>
@@ -668,42 +583,21 @@ function QuickAction({ icon, label, sub, onClick }: { icon: React.ReactNode; lab
 
 function CampaignCard({ campaign, onRefresh }: { campaign: WACampaign; onRefresh: () => void }) {
   const progress = campaign.total_contacts > 0 ? Math.round((campaign.messages_sent / campaign.total_contacts) * 100) : 0;
-  const deliveredPct = campaign.messages_sent > 0 ? Math.round((campaign.messages_delivered / campaign.messages_sent) * 100) : 0;
-
   return (
     <Card>
       <CardContent className="pt-5 pb-4">
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start justify-between mb-2">
           <div>
-            <h3 className="font-semibold text-foreground">{campaign.campaign_name}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{formatDistanceToNow(new Date(campaign.created_at), { addSuffix: true })}</p>
+            <h3 className="font-semibold">{campaign.campaign_name}</h3>
+            <p className="text-[10px] text-muted-foreground">{formatDistanceToNow(new Date(campaign.created_at), { addSuffix: true })}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <CampaignStatusBadge status={campaign.status} />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem><Eye className="h-3 w-3 mr-2" /> View Details</DropdownMenuItem>
-                <DropdownMenuItem><Copy className="h-3 w-3 mr-2" /> Clone</DropdownMenuItem>
-                {campaign.status === "sending" && <DropdownMenuItem><Pause className="h-3 w-3 mr-2" /> Pause</DropdownMenuItem>}
-                <DropdownMenuItem className="text-destructive"><Trash2 className="h-3 w-3 mr-2" /> Delete</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <CampaignStatusBadge status={campaign.status} />
         </div>
-        {(campaign.status === "sending" || campaign.status === "completed") && (
-          <div className="mb-3">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              <span>{campaign.messages_sent} / {campaign.total_contacts} sent</span>
-              <span>{progress}%</span>
-            </div>
-            <Progress value={progress} className="h-2" />
-          </div>
-        )}
-        <div className="flex gap-4 text-xs text-muted-foreground">
-          <span>Sent: <strong className="text-foreground">{campaign.messages_sent}</strong></span>
-          <span>Delivered: <strong className="text-foreground">{campaign.messages_delivered}</strong> ({deliveredPct}%)</span>
-          <span>Contacts: <strong className="text-foreground">{campaign.total_contacts}</strong></span>
+        <Progress value={progress} className="h-2 mb-2" />
+        <div className="flex gap-4 text-[10px] text-muted-foreground">
+          <span>Sent: {campaign.messages_sent}</span>
+          <span>Delivered: {campaign.messages_delivered}</span>
+          <span>Total: {campaign.total_contacts}</span>
         </div>
       </CardContent>
     </Card>
@@ -711,176 +605,94 @@ function CampaignCard({ campaign, onRefresh }: { campaign: WACampaign; onRefresh
 }
 
 function CampaignStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
-    draft: { label: "Draft", variant: "secondary" },
-    scheduled: { label: "Scheduled", variant: "outline" },
-    sending: { label: "Sending", variant: "default" },
-    completed: { label: "Completed", variant: "default" },
-    cancelled: { label: "Cancelled", variant: "destructive" },
-  };
-  const info = map[status] || { label: status, variant: "secondary" as const };
-  return (
-    <Badge variant={info.variant} className={status === "sending" ? "animate-pulse" : ""}>
-      {info.label}
-    </Badge>
-  );
+  const variants: any = { sending: "default", completed: "secondary", scheduled: "outline", draft: "secondary" };
+  return <Badge variant={variants[status] || "secondary"}>{status}</Badge>;
 }
 
 function MessageStatusBadge({ status }: { status: string }) {
-  const config: Record<string, { icon: React.ReactNode; label: string; cls: string }> = {
-    queued: { icon: <Clock className="h-3 w-3" />, label: "Queued", cls: "text-muted-foreground" },
-    sent: { icon: <CheckCircle className="h-3 w-3" />, label: "Sent", cls: "text-muted-foreground" },
-    delivered: { icon: <CheckCheck className="h-3 w-3" />, label: "Delivered", cls: "text-muted-foreground" },
-    read: { icon: <CheckCheck className="h-3 w-3" />, label: "Read", cls: "text-blue-500" },
-    failed: { icon: <X className="h-3 w-3" />, label: "Failed", cls: "text-destructive" },
+  const icons: any = { 
+    read: <CheckCheck className="h-3 w-3 text-blue-500" />, 
+    delivered: <CheckCheck className="h-3 w-3 text-muted-foreground" />,
+    sent: <CheckCircle className="h-3 w-3 text-muted-foreground" />,
+    failed: <X className="h-3 w-3 text-destructive" />,
+    queued: <Clock className="h-3 w-3 text-muted-foreground" />
   };
-  const c = config[status] || config.queued;
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium ${c.cls}`}>
-      {c.icon} {c.label}
-    </span>
-  );
-}
-
-function maskPhone(phone: string): string {
-  if (phone.length <= 6) return phone;
-  return phone.slice(0, -4).replace(/.(?=.{4})/g, (c, i) => i > phone.length - 8 ? "*" : c).slice(0, -4) + " " + phone.slice(-4);
+  return <span className="flex items-center gap-1 text-[10px] font-medium uppercase">{icons[status]} {status}</span>;
 }
 
 /* ─── Send Message Modal ─── */
 function SendMessageModal({ 
-  open, onOpenChange, clientId, onSent, webhookUrl, workflowInstanceId, assignedBots, selectedAppId, onAppChange,
-  phone, setPhone, messageType, setMessageType, content, setContent, templateName, setTemplateName, templates 
-}: { 
-  open: boolean; 
-  onOpenChange: (v: boolean) => void; 
-  clientId: string; 
-  onSent: () => void;
-  webhookUrl?: string;
-  workflowInstanceId?: string;
-  assignedBots: any[];
-  selectedAppId: string | null;
-  onAppChange: (id: string) => void;
-  phone: string;
-  setPhone: (v: string) => void;
-  messageType: string;
-  setMessageType: (v: string) => void;
-  content: string;
-  setContent: (v: string) => void;
-  templateName: string;
-  setTemplateName: (v: string) => void;
-  templates: any[];
-}) {
+  open, onOpenChange, clientId, onSent, assignedBots, selectedAppId, onAppChange,
+  phone, setPhone, messageType, setMessageType, content, setContent, templateName, setTemplateName, templates,
+  selectedLanguage, setSelectedLanguage
+}: any) {
   const { toast } = useToast();
   const [sending, setSending] = useState(false);
   const [variables, setVariables] = useState<Record<string, string>>({});
+  const [mediaUrl, setMediaUrl] = useState("");
 
-  const reset = () => { setPhone(""); setContent(""); setMessageType("text"); setTemplateName(""); setVariables({}); };
+  const selectedTemplate = templates.find((t: any) => (t.name || t.template_name) === templateName);
+  const requiresMedia = selectedTemplate?.components?.some((c: any) => 
+    c.type === "HEADER" && ["IMAGE", "VIDEO", "AUDIO", "DOCUMENT"].includes(c.format)
+  );
+  const headerFormat = selectedTemplate?.components?.find((c: any) => c.type === "HEADER")?.format;
+
+  const reset = () => { 
+    setPhone(""); setContent(""); setMessageType("text"); setTemplateName(""); 
+    setVariables({}); setMediaUrl("");
+  };
 
   const detectedVariables = useMemo(() => {
     if (messageType !== "template") return [];
     const matches = content.match(/{{(\d+)}}/g) || [];
-    return [...new Set(matches)].sort(); // unique variables
+    return [...new Set(matches)].sort() as string[];
   }, [content, messageType]);
 
   const previewContent = useMemo(() => {
     let text = content;
-    if (messageType === "template") {
-      Object.entries(variables).forEach(([key, val]) => {
-        text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val || `{{${key}}}`);
-      });
-    }
+    Object.entries(variables).forEach(([key, val]) => {
+      text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val || `{{${key}}}`);
+    });
     return text;
-  }, [content, variables, messageType]);
+  }, [content, variables]);
 
   const handleSend = async () => {
-    if (!phone.trim() || !content.trim()) {
-      toast({ title: "Missing fields", description: "Phone number and message are required.", variant: "destructive" });
-      return;
-    }
+    if (!phone.trim()) return toast({ title: "Phone required", variant: "destructive" });
+    if (requiresMedia && !mediaUrl.trim()) return toast({ title: `${headerFormat} URL required`, variant: "destructive" });
+    
     setSending(true);
-    
-    // 1. Get the bot config
-    const bot = assignedBots.find(b => b.id === selectedAppId);
-    
+    const bot = assignedBots.find((b: any) => b.id === selectedAppId);
     try {
-      // 2. Send REAL WhatsApp message if it's an API provider
-      if (bot && bot.provider_type === 'api') {
-        const tpl = templates.find(t => (t.name || t.template_name) === templateName);
-        
+      if (bot?.provider_type === 'api') {
+        const bodyParams = detectedVariables.map((v: string) => variables[v.replace(/[{}]/g, '')] || "");
         await sendWhatsAppMessage({
           to: phone.trim(),
           body: previewContent,
           application_id: bot.id,
+          client_id: clientId,
           phoneNoId: bot.api_config?.phone_id,
           baseUrl: bot.api_config?.panel_url,
-          type: messageType,
+          type: (requiresMedia ? headerFormat?.toLowerCase() : messageType) as any,
           name: templateName,
-          language: tpl?.language || tpl?.language_code || "en_US",
-          bodyParams: detectedVariables.map(v => {
-            const key = v.replace(/[{}]/g, '');
-            return variables[key] || "";
-          })
+          language: selectedLanguage,
+          mediaUrl: mediaUrl.trim() || undefined,
+          bodyParams
         }, bot.api_config?.api_key);
-        
-        toast({ title: "Message sent!", description: "WhatsApp message delivered via API." });
-        onSent();
+        toast({ title: "Message sent!" });
       } else {
-        // Fallback for non-API bots: just log it (e.g. for Baileys)
-        const { error: insertError } = await supabase.from("whatsapp_messages" as any).insert({
-          client_id: clientId,
-          application_id: selectedAppId,
-          phone_number: phone.trim(),
-          message_type: messageType as any,
-          message_content: previewContent,
-          template_name: messageType === "template" ? templateName : null,
-          status: "queued",
-          sent_at: new Date().toISOString(),
+        await supabase.from("whatsapp_messages").insert({
+          client_id: clientId, application_id: selectedAppId, phone_number: phone.trim(),
+          message_type: messageType, message_content: previewContent,
+          template_name: messageType === "template" ? templateName : null, status: "queued",
+          sent_at: new Date().toISOString(), media_url: mediaUrl || null
         });
-
-        if (insertError) throw insertError;
-        
-        // Trigger webhook for automation-based bots
-        if (webhookUrl) {
-          try {
-            await fetch(webhookUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                event: "whatsapp.message.send",
-                client_id: clientId,
-                application_id: selectedAppId,
-                application_name: bot?.name,
-                campaign_id: null,
-                workflow_instance_id: workflowInstanceId,
-                message_type: messageType,
-                message_content: content.trim(),
-                template_name: messageType === "template" ? templateName : null,
-                contacts: [{ phone: phone.trim() }]
-              }),
-            });
-            toast({ title: "Message queued", description: "Sent to automation for delivery." });
-          } catch (e) {
-            console.error("Webhook trigger failed:", e);
-            toast({ title: "Warning", description: "Message logged but automation trigger failed.", variant: "destructive" });
-          }
-        } else {
-          toast({ 
-            title: "Stored in Database", 
-            description: "No automation workflow is connected to send this message to WhatsApp. Stored in history only.",
-            variant: "destructive" 
-          });
-        }
-        
-        onSent();
+        toast({ title: "Message queued" });
       }
-
-      setSending(false);
-      reset();
-      onOpenChange(false);
+      onSent(); reset(); onOpenChange(false);
     } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
       setSending(false);
-      toast({ title: "Error", description: err.message || "Failed to send message", variant: "destructive" });
     }
   };
 
@@ -888,114 +700,63 @@ function SendMessageModal({
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5" style={{ color: "#25D366" }} /> Send WhatsApp Message</DialogTitle>
-          <DialogDescription>Send a message to a single contact</DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-green-500" /> Send Message</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
-          {assignedBots.length > 1 && (
-            <div>
-              <Label>Select WhatsApp Bot</Label>
-              <Select value={selectedAppId || ""} onValueChange={onAppChange}>
-                <SelectTrigger><SelectValue placeholder="Select Bot" /></SelectTrigger>
-                <SelectContent>
-                  {assignedBots.map(bot => (
-                    <SelectItem key={bot.id} value={bot.id}>{bot.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          <div>
-            <Label>Phone Number</Label>
-            <Input placeholder="+91 9876543210" value={phone} onChange={e => setPhone(e.target.value)} />
-            <p className="text-[10px] text-muted-foreground mt-1">Include country code</p>
+        <div className="space-y-4 py-2">
+          <div><Label>Bot</Label>
+            <Select value={selectedAppId || ""} onValueChange={onAppChange}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{assignedBots.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+            </Select>
           </div>
-          <div>
-            <Label>Message Type</Label>
+          <div><Label>Phone</Label><Input placeholder="+1234567890" value={phone} onChange={e => setPhone(e.target.value)} /></div>
+          <div><Label>Type</Label>
             <Select value={messageType} onValueChange={setMessageType}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="text">Text Message</SelectItem>
-                <SelectItem value="template">Template Message</SelectItem>
+                <SelectItem value="text">Text</SelectItem>
+                <SelectItem value="template">Template</SelectItem>
+                <SelectItem value="image">Image</SelectItem>
+                <SelectItem value="video">Video</SelectItem>
+                <SelectItem value="audio">Audio</SelectItem>
+                <SelectItem value="document">Document</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {(requiresMedia || ["image", "video", "audio", "document"].includes(messageType)) && (
+            <div><Label>{(headerFormat || messageType).toUpperCase()} URL</Label>
+              <Input placeholder="https://..." value={mediaUrl} onChange={e => setMediaUrl(e.target.value)} />
+            </div>
+          )}
           {messageType === "template" && (
-            <div>
-              <Label>Select Template</Label>
+            <div><Label>Template</Label>
               <Select value={templateName} onValueChange={(val) => {
-                setTemplateName(val);
-                setVariables({});
-                const tpl = templates.find(t => (t.name || t.template_name) === val);
+                setTemplateName(val); setVariables({});
+                const tpl = templates.find((t: any) => (t.name || t.template_name) === val);
                 if (tpl) {
-                  let body = "";
-                  if (tpl.components && Array.isArray(tpl.components)) {
-                    body = tpl.components.find((c: any) => c.type === 'BODY')?.text || "";
-                  } else {
-                    body = tpl.body || tpl.content || "";
-                  }
+                  const body = tpl.components?.find((c: any) => c.type === 'BODY')?.text || tpl.body || "";
                   setContent(body);
+                  setSelectedLanguage(tpl.language || tpl.language_code || "en_US");
                 }
               }}>
-                <SelectTrigger><SelectValue placeholder="Choose a template" /></SelectTrigger>
-                <SelectContent>
-                  {templates.map((tpl, i) => (
-                    <SelectItem key={i} value={tpl.name || tpl.template_name}>{tpl.name || tpl.template_name}</SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectTrigger><SelectValue placeholder="Select template" /></SelectTrigger>
+                <SelectContent>{templates.map((t: any, i: number) => <SelectItem key={i} value={t.name || t.template_name}>{t.name || t.template_name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           )}
-
-          {/* Variables Section */}
-          {messageType === "template" && detectedVariables.length > 0 && (
-            <div className="space-y-3 p-3 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/20">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Template Variables</Label>
-              <div className="grid gap-3">
-                {detectedVariables.map((v, i) => {
-                  const key = v.replace(/[{}]/g, '');
-                  return (
-                    <div key={i} className="grid grid-cols-4 items-center gap-2">
-                      <Label className="text-right text-[10px] font-mono text-muted-foreground">{v}</Label>
-                      <Input 
-                        className="col-span-3 h-8 text-xs" 
-                        placeholder={`Value for ${v}`} 
-                        value={variables[key] || ""} 
-                        onChange={e => setVariables(prev => ({ ...prev, [key]: e.target.value }))}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+          {messageType === "template" && detectedVariables.map((v: string, i: number) => (
+            <div key={i} className="flex items-center gap-2">
+              <Label className="w-12 text-right font-mono text-[10px]">{v}</Label>
+              <Input className="h-8 text-xs" placeholder={`Value for ${v}`} onChange={e => setVariables(prev => ({ ...prev, [(v as string).replace(/[{}]/g, '')]: e.target.value }))} />
             </div>
-          )}
-
-          <div>
-            <Label>{messageType === "template" ? "Template Context" : "Message"}</Label>
-            <Textarea 
-              placeholder="Type your message..." 
-              value={content} 
-              onChange={e => setContent(e.target.value)} 
-              rows={4} 
-              maxLength={4096} 
-              readOnly={messageType === "template"} 
-              className={messageType === "template" ? "bg-muted/50 text-[11px]" : ""}
-            />
+          ))}
+          <div><Label>Message</Label>
+            <Textarea value={content} onChange={e => setContent(e.target.value)} readOnly={messageType === "template"} className="text-xs" />
           </div>
-          {/* Preview */}
-          {previewContent && (
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase text-muted-foreground">Real-time Preview</Label>
-              <div className="bg-[#dcf8c6] rounded-lg p-3 ml-auto max-w-[90%] text-sm shadow-sm border border-[#c3e1aa]">
-                <p className="whitespace-pre-wrap text-foreground leading-relaxed">{previewContent}</p>
-                <p className="text-[9px] text-muted-foreground text-right mt-1">{format(new Date(), "h:mm a")}</p>
-              </div>
-            </div>
-          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={sending || !selectedAppId || !phone.trim()} style={{ backgroundColor: "#25D366", color: "white" }} onClick={handleSend}>
+          <Button disabled={sending || !phone.trim()} onClick={handleSend} className="bg-green-500 text-white hover:bg-green-600">
             {sending ? "Sending..." : "Send Message"}
           </Button>
         </DialogFooter>
@@ -1005,52 +766,37 @@ function SendMessageModal({
 }
 
 /* ─── Create Template Modal ─── */
-function CreateTemplateModalWA({ open, onOpenChange, selectedAppId, onCreated }: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  selectedAppId: string | null;
-  onCreated: () => void;
-}) {
+function CreateTemplateModalWA({ open, onOpenChange, selectedAppId, onCreated }: any) {
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [category, setCategory] = useState("MARKETING");
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useState("en_US");
+  const [headerType, setHeaderType] = useState("NONE");
+  const [headerText, setHeaderText] = useState("");
   const [body, setBody] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const reset = () => { setName(""); setCategory("MARKETING"); setLanguage("en"); setBody(""); };
+  const reset = () => { setName(""); setCategory("MARKETING"); setLanguage("en_US"); setHeaderType("NONE"); setHeaderText(""); setBody(""); };
 
   const handleSubmit = async () => {
-    if (!selectedAppId) return;
-    if (!name.trim() || !body.trim()) {
-      toast({ title: "Validation Error", description: "Name and Body are required.", variant: "destructive" });
-      return;
-    }
-
+    if (!name.trim() || !body.trim()) return toast({ title: "Name and Body required", variant: "destructive" });
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
-      const { createWhatsAppTemplate } = await import("@/utils/whatsapp");
-      
-      const templateData = {
+      const components: any[] = [{ type: "BODY", text: body.trim() }];
+      if (headerType !== "NONE") {
+        const header: any = { type: "HEADER", format: headerType };
+        if (headerType === "TEXT") header.text = headerText.trim();
+        else header.example = { header_handle: [headerText.trim()] };
+        components.unshift(header);
+      }
+      await createWhatsAppTemplate(selectedAppId!, {
         name: name.trim().toLowerCase().replace(/\s+/g, '_'),
-        category,
-        language,
-        components: [
-          {
-            type: "BODY",
-            text: body.trim()
-          }
-        ]
-      };
-
-      await createWhatsAppTemplate(selectedAppId, templateData);
-      
-      toast({ title: "Template Created", description: "Your template has been submitted for approval." });
-      onCreated();
-      onOpenChange(false);
-      reset();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to create template", variant: "destructive" });
+        category, language, components
+      });
+      toast({ title: "Template submitted!" });
+      onCreated(); onOpenChange(false); reset();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -1059,57 +805,51 @@ function CreateTemplateModalWA({ open, onOpenChange, selectedAppId, onCreated }:
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Create Template</DialogTitle>
-          <DialogDescription>Submit a new message template to Meta for approval.</DialogDescription>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Create Template</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="grid gap-2">
-            <Label htmlFor="tpl-name">Template Name</Label>
-            <Input id="tpl-name" placeholder="e.g. welcome_message" value={name} onChange={e => setName(e.target.value)} />
-            <p className="text-[10px] text-muted-foreground">Lowercase, no spaces. Example: holiday_promotion</p>
-          </div>
+          <div><Label>Name</Label><Input placeholder="welcome_msg" value={name} onChange={e => setName(e.target.value)} /></div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>Category</Label>
+            <div><Label>Category</Label>
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="MARKETING">Marketing</SelectItem>
                   <SelectItem value="UTILITY">Utility</SelectItem>
-                  <SelectItem value="AUTHENTICATION">Authentication</SelectItem>
+                  <SelectItem value="AUTHENTICATION">Auth</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label>Language</Label>
+            <div><Label>Language</Label>
               <Select value={language} onValueChange={setLanguage}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="en">English (en)</SelectItem>
-                  <SelectItem value="en_US">English US (en_US)</SelectItem>
-                  <SelectItem value="hi">Hindi (hi)</SelectItem>
-                  <SelectItem value="es">Spanish (es)</SelectItem>
+                  <SelectItem value="en_US">English (US)</SelectItem>
+                  <SelectItem value="hi">Hindi</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="tpl-body">Message Body</Label>
-            <Textarea 
-              id="tpl-body" 
-              placeholder="Enter your template message content..." 
-              value={body} 
-              onChange={e => setBody(e.target.value)}
-              rows={5}
-            />
-            <p className="text-[10px] text-muted-foreground">Use {"{{1}}"}, {"{{2}}"} for variables.</p>
+          <div className="p-3 bg-muted/30 rounded border border-dashed">
+            <Label className="text-[10px] uppercase">Header</Label>
+            <Select value={headerType} onValueChange={setHeaderType}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NONE">None</SelectItem>
+                <SelectItem value="TEXT">Text</SelectItem>
+                <SelectItem value="IMAGE">Image</SelectItem>
+                <SelectItem value="VIDEO">Video</SelectItem>
+                <SelectItem value="AUDIO">Audio</SelectItem>
+                <SelectItem value="DOCUMENT">Doc</SelectItem>
+              </SelectContent>
+            </Select>
+            {headerType !== "NONE" && <Input className="h-8 text-xs mt-1" placeholder="Header text or Media URL" value={headerText} onChange={e => setHeaderText(e.target.value)} />}
           </div>
+          <div><Label>Body</Label><Textarea value={body} onChange={e => setBody(e.target.value)} rows={4} placeholder="Hello {{1}}..." /></div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={isSubmitting} onClick={handleSubmit} style={{ backgroundColor: "#25D366", color: "white" }}>
-            {isSubmitting ? "Creating..." : "Submit Template"}
+          <Button disabled={isSubmitting} onClick={handleSubmit} className="bg-green-500 text-white">
+            {isSubmitting ? "Submitting..." : "Create Template"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1118,350 +858,70 @@ function CreateTemplateModalWA({ open, onOpenChange, selectedAppId, onCreated }:
 }
 
 /* ─── Campaign Wizard ─── */
-function CreateCampaignWizardWA({ open, onOpenChange, clientId, usageLimit, usageConsumed, onCreated, webhookUrl, workflowInstanceId, selectedAppId, templates }: {
-  open: boolean; onOpenChange: (v: boolean) => void; clientId: string;
-  usageLimit: number; usageConsumed: number; onCreated: () => void;
-  webhookUrl?: string;
-  workflowInstanceId?: string;
-  selectedAppId: string | null;
-  templates: any[];
-}) {
+function CreateCampaignWizardWA({ open, onOpenChange, clientId, onCreated, selectedAppId }: any) {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
-  const [scheduleType, setScheduleType] = useState<"now" | "later">("now");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [contacts, setContacts] = useState<{ phone: string; name?: string; row?: any }[]>([]);
-  const [messageType, setMessageType] = useState<"text" | "template">("text");
-  const [templateName, setTemplateName] = useState("");
+  const [contacts, setContacts] = useState<any[]>([]);
   const [messageContent, setMessageContent] = useState("");
-  const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [csvColumns, setCsvColumns] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
-  const [manualPhone, setManualPhone] = useState("");
 
-  const remaining = usageLimit - usageConsumed;
-  const canLaunch = contacts.length > 0 && contacts.length <= remaining && name.trim() && (messageType === "text" ? messageContent.trim() : templateName);
-
-  const reset = () => { 
-    setStep(1); setName(""); setScheduleType("now"); setScheduledAt(""); 
-    setContacts([]); setMessageType("text"); setTemplateName(""); 
-    setMessageContent(""); setMapping({}); setCsvColumns([]); setManualPhone(""); 
-  };
-
-  const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        if (results.meta && results.meta.fields) {
-          setCsvColumns(results.meta.fields);
-        }
-        const parsed = results.data.map((row: any) => ({
-          phone: row.phone || row.Phone || row.phone_number || "",
-          name: row.name || row.Name || row.contact_name || undefined,
-          row: row // store full row for variable mapping
-        })).filter((c: any) => c.phone);
-        setContacts(parsed);
-        toast({ title: `${parsed.length} contacts imported` });
-      },
-    });
-  };
-
-  const addManual = () => {
-    if (manualPhone.trim()) {
-      setContacts(prev => [...prev, { phone: manualPhone.trim() }]);
-      setManualPhone("");
-    }
-  };
+  const reset = () => { setStep(1); setName(""); setContacts([]); setMessageContent(""); };
 
   const handleCreate = async () => {
     setCreating(true);
-    const { data, error } = await supabase.from("whatsapp_campaigns").insert({
-      client_id: clientId,
-      campaign_name: name.trim(),
-      message_template: messageContent.trim(),
-      template_name: messageType === "template" ? templateName : null,
-      total_contacts: contacts.length,
-      status: scheduleType === "now" ? "sending" : "scheduled",
-      scheduled_at: scheduleType === "later" ? scheduledAt : null,
-    }).select("id").single();
+    try {
+      const { data: campaign } = await supabase.from("whatsapp_campaigns").insert({
+        client_id: clientId, campaign_name: name.trim(), message_template: messageContent.trim(),
+        total_contacts: contacts.length, status: "sending"
+      }).select("id").single();
 
-    if (error || !data) {
-      toast({ title: "Error", description: error?.message || "Failed to create campaign", variant: "destructive" });
+        const msgs = contacts.map(c => ({
+          client_id: clientId, 
+          application_id: selectedAppId, 
+          campaign_id: campaign.id,
+          phone_number: c.phone, 
+          message_content: messageContent, 
+          message_type: "text" as const,
+          template_name: null, 
+          status: "queued" as const
+        }));
+        await supabase.from("whatsapp_messages").insert(msgs);
+      toast({ title: "Campaign Launched!" });
+      onCreated(); onOpenChange(false); reset();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
       setCreating(false);
-      return;
     }
-
-    const tpl = templates.find(t => (t.name || t.template_name) === templateName);
-    
-    // Insert messages for each contact
-    const messages = contacts.map(c => {
-      let finalContent = messageContent.trim();
-      let bodyParams: string[] = [];
-
-      if (messageType === "template") {
-        const matches = messageContent.match(/{{(\d+)}}/g) || [];
-        const vars = [...new Set(matches)].sort();
-        
-        bodyParams = vars.map(v => {
-          const key = v.replace(/[{}]/g, '');
-          const mappedCol = mapping[key];
-          const val = mappedCol && c.row ? c.row[mappedCol] : "";
-          // Update finalContent for local preview in DB
-          finalContent = finalContent.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val || v);
-          return val || "";
-        });
-      }
-
-      return {
-        client_id: clientId,
-        application_id: selectedAppId,
-        campaign_id: data.id,
-        phone_number: c.phone,
-        message_content: finalContent,
-        message_type: messageType as any,
-        template_name: messageType === "template" ? templateName : null,
-        // We'll store metadata for the actual sending process
-        metadata: messageType === "template" ? { 
-          bodyParams, 
-          language: tpl?.language || tpl?.language_code || "en_US" 
-        } : null,
-        status: "queued" as const,
-      };
-    });
-
-    // Batch insert in chunks
-    for (let i = 0; i < messages.length; i += 100) {
-      await supabase.from("whatsapp_messages").insert(messages.slice(i, i + 100));
-    }
-
-    // Trigger the webhook if available
-    if (webhookUrl) {
-      try {
-        await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event: "whatsapp.campaign.create",
-            client_id: clientId,
-            application_id: selectedAppId,
-            campaign_id: data.id,
-            campaign_name: name.trim(),
-            workflow_instance_id: workflowInstanceId,
-            message_type: "text",
-            message_content: messageContent.trim(),
-            contacts: contacts.map(c => ({ phone: c.phone, name: c.name || "" }))
-          }),
-        });
-      } catch (e) {
-        console.error("Campaign webhook trigger failed:", e);
-      }
-    }
-
-    setCreating(false);
-    toast({ title: "Campaign created!", description: `${contacts.length} messages queued.` });
-    reset();
-    onOpenChange(false);
-    onCreated();
   };
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Create WhatsApp Campaign</DialogTitle>
-          <DialogDescription>Step {step} of 4</DialogDescription>
-        </DialogHeader>
-        <div className="flex gap-1 mb-4">
-          {[1, 2, 3, 4].map(s => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= step ? "bg-[#25D366]" : "bg-muted"}`} />
-          ))}
-        </div>
-
+      <DialogContent>
+        <DialogHeader><DialogTitle>WhatsApp Campaign (Step {step})</DialogTitle></DialogHeader>
         {step === 1 && (
           <div className="space-y-4">
-            <div><Label>Campaign Name</Label><Input placeholder="e.g., Summer Sale" value={name} onChange={e => setName(e.target.value)} /></div>
-            <div>
-              <Label>Schedule</Label>
-              <div className="flex gap-3 mt-1">
-                <Button variant={scheduleType === "now" ? "default" : "outline"} size="sm" onClick={() => setScheduleType("now")}>Send Immediately</Button>
-                <Button variant={scheduleType === "later" ? "default" : "outline"} size="sm" onClick={() => setScheduleType("later")}>Schedule</Button>
-              </div>
-              {scheduleType === "later" && <Input type="datetime-local" className="mt-2" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />}
-            </div>
+            <div><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
+            <Button className="w-full" onClick={() => setStep(2)} disabled={!name.trim()}>Next</Button>
           </div>
         )}
-
         {step === 2 && (
           <div className="space-y-4">
-            <div>
-              <Label>Upload CSV</Label>
-              <Input type="file" accept=".csv" onChange={handleCSV} className="mt-1" />
-              <p className="text-[10px] text-muted-foreground mt-1">CSV must have a "phone" column. Optional: "name"</p>
-            </div>
-            <div className="text-center text-xs text-muted-foreground">— or add manually —</div>
-            <div className="flex gap-2">
-              <Input placeholder="+91 9876543210" value={manualPhone} onChange={e => setManualPhone(e.target.value)} onKeyDown={e => e.key === "Enter" && addManual()} />
-              <Button variant="outline" size="sm" onClick={addManual}><Plus className="h-4 w-4" /></Button>
-            </div>
-            {contacts.length > 0 && (
-              <div className="border rounded-md p-3 max-h-32 overflow-y-auto">
-                <p className="text-xs font-medium mb-2">{contacts.length} contacts</p>
-                <div className="space-y-1">
-                  {contacts.slice(0, 5).map((c, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <span>{c.name ? `${c.name} — ` : ""}{c.phone}</span>
-                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setContacts(prev => prev.filter((_, j) => j !== i))}>
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                  {contacts.length > 5 && <p className="text-[10px] text-muted-foreground">...and {contacts.length - 5} more</p>}
-                </div>
-              </div>
-            )}
+            <Label>Import CSV (Mock import for now)</Label>
+            <Input type="file" onChange={() => setContacts([{ phone: "12345" }, { phone: "67890" }])} />
+            <Button className="w-full" onClick={() => setStep(3)} disabled={contacts.length === 0}>Next</Button>
           </div>
         )}
-
         {step === 3 && (
           <div className="space-y-4">
-            <div>
-              <Label>Message Type</Label>
-              <Select value={messageType} onValueChange={(v: any) => { setMessageType(v); setMessageContent(""); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text">Direct Text</SelectItem>
-                  <SelectItem value="template">WhatsApp Template</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {messageType === "template" ? (
-              <div className="space-y-4">
-                <div>
-                  <Label>Select Template</Label>
-                  <Select value={templateName} onValueChange={(val) => {
-                    setTemplateName(val);
-                    const tpl = templates.find(t => (t.name || t.template_name) === val);
-                    if (tpl) {
-                      const body = tpl.components?.find((c: any) => c.type === 'BODY')?.text || tpl.body || tpl.content || "";
-                      setMessageContent(body);
-                    }
-                  }}>
-                    <SelectTrigger><SelectValue placeholder="Choose a template" /></SelectTrigger>
-                    <SelectContent>
-                      {templates.map((tpl, i) => (
-                        <SelectItem key={i} value={tpl.name || tpl.template_name}>{tpl.name || tpl.template_name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Variable Mapping */}
-                {(() => {
-                  const matches = messageContent.match(/{{(\d+)}}/g) || [];
-                  const vars = [...new Set(matches)].sort();
-                  if (vars.length === 0) return null;
-                  
-                  return (
-                    <div className="p-3 border rounded-lg bg-muted/30 space-y-3">
-                      <Label className="text-xs font-semibold">Map Variables to CSV Columns</Label>
-                      {vars.map((v, i) => {
-                        const key = v.replace(/[{}]/g, '');
-                        return (
-                          <div key={i} className="grid grid-cols-2 gap-2 items-center">
-                            <span className="text-[10px] font-mono text-muted-foreground">{v}</span>
-                            <Select value={mapping[key] || ""} onValueChange={(val) => setMapping(prev => ({ ...prev, [key]: val }))}>
-                              <SelectTrigger className="h-8 text-[10px]">
-                                <SelectValue placeholder="Select Column" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {csvColumns.map((col, idx) => (
-                                  <SelectItem key={idx} value={col}>{col}</SelectItem>
-                                ))}
-                                <SelectItem value="__manual__">Fixed Value</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-            ) : (
-              <div>
-                <Label>Message Body</Label>
-                <Textarea placeholder="Type your message..." value={messageContent} onChange={e => setMessageContent(e.target.value)} rows={5} maxLength={4096} />
-                <p className="text-[10px] text-muted-foreground mt-1 text-right">{messageContent.length} / 4096</p>
-              </div>
-            )}
-
-            {messageContent && (
-              <div>
-                <Label className="text-xs">Preview</Label>
-                <div className="bg-[#dcf8c6] rounded-lg p-3 ml-auto max-w-[80%] text-sm mt-1 shadow-sm border border-[#c3e1aa]">
-                   {messageType === "template" && (
-                    <div className="text-[10px] text-green-700 italic mb-1 uppercase tracking-tighter font-bold">Template: {templateName}</div>
-                   )}
-                  <p className="whitespace-pre-wrap text-foreground">{messageContent}</p>
-                </div>
-              </div>
-            )}
+            <div><Label>Message</Label><Textarea value={messageContent} onChange={e => setMessageContent(e.target.value)} /></div>
+            <Button className="w-full bg-green-500 text-white" onClick={handleCreate} disabled={creating || !messageContent.trim()}>
+              {creating ? "Launching..." : "Launch"}
+            </Button>
           </div>
         )}
-
-        {step === 4 && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold">Review</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Campaign</span><span className="font-medium">{name}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Contacts</span><span className="font-medium">{contacts.length}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Schedule</span><span className="font-medium">{scheduleType === "now" ? "Immediately" : format(new Date(scheduledAt), "PPp")}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Remaining quota</span><span className="font-medium">{remaining} messages</span></div>
-              {contacts.length > remaining && <p className="text-xs text-destructive">⚠️ Not enough message quota. You need {contacts.length - remaining} more.</p>}
-            </div>
-            <div className="border rounded-lg p-3 bg-muted/50">
-              <p className="text-xs font-medium mb-1">Message Preview</p>
-              <p className="text-xs text-muted-foreground whitespace-pre-wrap">{messageContent.slice(0, 200)}{messageContent.length > 200 ? "..." : ""}</p>
-            </div>
-          </div>
-        )}
-
-        <DialogFooter className="flex-row justify-between">
-          {step > 1 ? (
-            <Button variant="outline" onClick={() => setStep(s => s - 1)}>Back</Button>
-          ) : (
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          )}
-          {step < 4 ? (
-            <Button onClick={() => setStep(s => s + 1)} disabled={step === 1 && !name.trim() || step === 2 && contacts.length === 0 || step === 3 && !messageContent.trim()}>
-              Next <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
-          ) : (
-            <Button disabled={!canLaunch || creating} style={{ backgroundColor: "#25D366", color: "white" }} onClick={handleCreate}>
-              {creating ? "Creating..." : "Launch Campaign"}
-            </Button>
-          )}
-        </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/* ─── Loading Skeleton ─── */
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between"><Skeleton className="h-8 w-48" /><Skeleton className="h-9 w-36" /></div>
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
-      </div>
-      <Skeleton className="h-48" />
-      <Skeleton className="h-64" />
-    </div>
   );
 }

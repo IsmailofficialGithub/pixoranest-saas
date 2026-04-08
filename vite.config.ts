@@ -12,6 +12,13 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      "/whapi": {
+        target: "https://app.whapihub.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/whapi/, ""),
+      },
+    },
   },
   plugins: [
     react(),

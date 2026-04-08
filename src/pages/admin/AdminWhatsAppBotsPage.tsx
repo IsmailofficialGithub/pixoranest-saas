@@ -89,47 +89,25 @@ export default function AdminWhatsAppBotsPage() {
     }
   });
 
-  const { data: users = [] } = useQuery({
-    queryKey: ["whatsapp-eligible-users"],
+  const { data: users = [], isLoading: isUsersLoading } = useQuery({
+    queryKey: ["whatsapp-eligible-users", debouncedUserSearch],
     queryFn: async () => {
-      // 1. Fetch clients who have the 'whatsapp' service active
-      // Starting from client_services because it has valid relations to both clients and services
-      const { data: activeServices, error: servicesError } = await supabase
-        .from("client_services")
-        .select(`
-          client_id,
-          clients!inner(user_id),
-          services!inner(slug)
-        `)
-        .eq("is_active", true)
-        .eq("services.slug", "whatsapp");
-
-      if (servicesError) {
-        console.error("Error fetching active services:", servicesError);
-        // Fallback: Fetch some profiles so the dropdown isn't totally empty during debugging
-        const { data: allProfiles } = await supabase.from("profiles").select("user_id, email, full_name").limit(50);
-        return allProfiles || [];
-      }
-
-      if (!activeServices || activeServices.length === 0) return [];
-
-      const activeUserIds = [...new Set(activeServices.map((s: any) => s.clients?.user_id).filter(Boolean))];
-
-      if (activeUserIds.length === 0) return [];
-
-      // 2. Fetch profiles for those user IDs
+      if (debouncedUserSearch.length < 2) return [];
+      
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("user_id, email, full_name")
-        .in("user_id", activeUserIds);
+        .or(`email.ilike.%${debouncedUserSearch}%,full_name.ilike.%${debouncedUserSearch}%`)
+        .limit(20);
       
       if (profilesError) {
-        console.error("Error fetching eligible profiles:", profilesError);
+        console.error("Error fetching profiles:", profilesError);
         return [];
       }
 
       return profiles;
-    }
+    },
+    enabled: debouncedUserSearch.length >= 2
   });
 
   const { data: accessList = [] } = useQuery({
@@ -344,10 +322,18 @@ export default function AdminWhatsAppBotsPage() {
                 {bot.provider_type === 'api' && (
                   <div className="flex items-center gap-2 pt-1 truncate"><ExternalLink className="h-3 w-3" /> {bot.api_config?.panel_url}</div>
                 )}
+                <div className="flex items-center gap-2 pt-1 border-t border-white/5 mt-2 transition-all">
+                  <UserPlus className="h-3 w-3 text-primary" />
+                  <span className="truncate">
+                    {accessList.find(acc => acc.application_id === bot.id)?.profile?.email || 'No user assigned'}
+                  </span>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2 pt-2">
                 <Button size="sm" variant="secondary" onClick={() => {
                   setSelectedBotId(bot.id);
+                  const currentAccess = accessList.find(acc => acc.application_id === bot.id);
+                  setAssignUserId(currentAccess?.user_id || "");
                   setIsAssignOpen(true);
                 }}>
                   <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Assign User
@@ -476,22 +462,19 @@ export default function AdminWhatsAppBotsPage() {
               <Select value={assignUserId} onValueChange={setAssignUserId}>
                 <SelectTrigger><SelectValue placeholder="User" /></SelectTrigger>
                 <SelectContent>
-                  {users
-                    .filter(u => 
-                      u.email.toLowerCase().includes(debouncedUserSearch.toLowerCase()) || 
-                      (u.full_name || '').toLowerCase().includes(debouncedUserSearch.toLowerCase())
-                    )
-                    .map(u => (
-                      <SelectItem key={u.user_id} value={u.user_id}>
-                        {u.full_name ? `${u.full_name} (${u.email})` : u.email}
-                      </SelectItem>
-                    ))
-                  }
-                  {users.length > 0 && users.filter(u => 
-                    u.email.toLowerCase().includes(debouncedUserSearch.toLowerCase()) || 
-                    (u.full_name || '').toLowerCase().includes(debouncedUserSearch.toLowerCase())
-                  ).length === 0 && (
-                    <div className="px-2 py-4 text-xs text-muted-foreground text-center">No users found</div>
+                  {isUsersLoading && (
+                    <div className="px-2 py-4 text-xs text-muted-foreground text-center animate-pulse">Searching users...</div>
+                  )}
+                  {!isUsersLoading && userSearch.length < 2 && (
+                    <div className="px-2 py-4 text-xs text-muted-foreground text-center">Type at least 2 characters to search</div>
+                  )}
+                  {users.map(u => (
+                    <SelectItem key={u.user_id} value={u.user_id}>
+                      {u.full_name ? `${u.full_name} (${u.email})` : u.email}
+                    </SelectItem>
+                  ))}
+                  {!isUsersLoading && userSearch.length >= 2 && users.length === 0 && (
+                    <div className="px-2 py-4 text-xs text-muted-foreground text-center">No users found for "{userSearch}"</div>
                   )}
                 </SelectContent>
               </Select>
