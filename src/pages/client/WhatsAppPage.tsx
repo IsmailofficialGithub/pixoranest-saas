@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   WHATSAPP_API_URL,
   getWhatsAppTemplates,
@@ -37,7 +38,7 @@ import {
   MessageCircle, CheckCircle, CheckCheck, Zap, MessageSquare,
   Users, FileText, BarChart3, MoreVertical, Plus, Send,
   Clock, X, ArrowRight, Upload, Eye, RefreshCw, Trash2,
-  Copy, Pause, Play, Video, Headset
+  Copy, Pause, Play, Video, Headset, AlertCircle
 } from "lucide-react";
 import { formatDistanceToNow, format, startOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -358,14 +359,34 @@ export default function WhatsAppPage() {
           <Badge variant="outline" className="text-xs py-1 px-3">
             {Math.max(stats?.total || 0, waService?.usage_consumed || 0)} / {waService?.usage_limit || 0} messages used
           </Badge>
-          <Button variant="outline" size="sm" onClick={() => setCampaignWizardOpen(true)}>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setCampaignWizardOpen(true)}
+            disabled={assignedBots.length === 0}
+          >
             <Plus className="h-4 w-4 mr-1" /> Campaign
           </Button>
-          <Button size="sm" style={{ backgroundColor: "#25D366", color: "white" }} onClick={() => setSendModalOpen(true)}>
+          <Button 
+            size="sm" 
+            style={{ backgroundColor: assignedBots.length === 0 ? "#a3a3a3" : "#25D366", color: "white" }} 
+            onClick={() => setSendModalOpen(true)}
+            disabled={assignedBots.length === 0}
+          >
             <Send className="h-4 w-4 mr-1" /> Send Message
           </Button>
         </div>
       </div>
+
+      {assignedBots.length === 0 && !isLoading && (
+        <Alert variant="destructive" className="bg-destructive/5 border-destructive/20 text-destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>No WhatsApp Bot Connected</AlertTitle>
+          <AlertDescription>
+            You don't have any WhatsApp bots assigned to your account. Please contact your administrator to connect a bot before you can send messages or start campaigns.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <StatsCard icon={<MessageCircle className="h-5 w-5" />} color="#25D366" label="Messages Sent" value={stats?.messagesSent ?? 0} subtext="This month" />
@@ -375,8 +396,20 @@ export default function WhatsAppPage() {
       </div>
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <QuickAction icon={<MessageSquare className="h-5 w-5" />} label="Send Single Message" sub="Send to one contact" onClick={() => setSendModalOpen(true)} />
-        <QuickAction icon={<Users className="h-5 w-5" />} label="Bulk Campaign" sub="Send to multiple contacts" onClick={() => setCampaignWizardOpen(true)} />
+        <QuickAction 
+          icon={<MessageSquare className="h-5 w-5" />} 
+          label="Send Single Message" 
+          sub="Send to one contact" 
+          onClick={() => setSendModalOpen(true)} 
+          disabled={assignedBots.length === 0}
+        />
+        <QuickAction 
+          icon={<Users className="h-5 w-5" />} 
+          label="Bulk Campaign" 
+          sub="Send to multiple contacts" 
+          onClick={() => setCampaignWizardOpen(true)} 
+          disabled={assignedBots.length === 0}
+        />
         <QuickAction icon={<FileText className="h-5 w-5" />} label="Message Templates" sub="Pre-approved templates" onClick={() => document.getElementById("wa-templates")?.scrollIntoView({ behavior: "smooth" })} />
         <QuickAction icon={<BarChart3 className="h-5 w-5" />} label="Analytics" sub="Message performance" onClick={() => document.getElementById("wa-analytics")?.scrollIntoView({ behavior: "smooth" })} />
       </div>
@@ -567,9 +600,12 @@ function StatsCard({ icon, color, label, value, subtext }: { icon: React.ReactNo
   );
 }
 
-function QuickAction({ icon, label, sub, onClick }: { icon: React.ReactNode; label: string; sub: string; onClick: () => void }) {
+function QuickAction({ icon, label, sub, onClick, disabled }: { icon: React.ReactNode; label: string; sub: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={onClick}>
+    <Card 
+      className={`cursor-pointer transition-colors ${disabled ? 'opacity-50 cursor-not-allowed grayscale-[0.5]' : 'hover:bg-muted/50'}`} 
+      onClick={() => !disabled && onClick()}
+    >
       <CardContent className="pt-5 pb-4 flex items-start gap-3">
         <div className="rounded-lg bg-muted p-2">{icon}</div>
         <div>
