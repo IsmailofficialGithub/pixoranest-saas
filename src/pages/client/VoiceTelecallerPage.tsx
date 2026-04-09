@@ -204,7 +204,7 @@ export default function VoiceTelecallerPage() {
         duration_seconds: parseDurationToSeconds(d.duration),
         status: d.call_status || 'unknown',
         ai_summary: d.transcript,
-        executed_at: d.created_at,
+        executed_at: d.created_at || d.started_at || null,
         recording_url: d.call_url,
         call_type: d.call_type,
         contact_name: d.name || d.phone
@@ -235,7 +235,8 @@ export default function VoiceTelecallerPage() {
           phone: callLog?.phone,
           name: callLog?.name,
           transcript: callLog?.transcript,
-          call_log_id: callLog?.id
+          call_log_id: callLog?.id,
+          executed_at: callLog?.created_at || null,
         };
       });
       setOutboundLeads(mapped);

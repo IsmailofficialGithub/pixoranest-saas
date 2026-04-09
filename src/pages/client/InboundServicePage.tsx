@@ -64,12 +64,13 @@ interface InboundAgent {
 
 interface CallLog {
   id: string;
-  caller_number: string;
+  phone: string;
   call_status: string;
-  duration: number;
-  transcript: string | null;
-  recording_url: string | null;
-  created_at: string;
+  duration: string;
+  transcript: string;
+  call_url: string;
+  created_at: string | null;
+  started_at?: string;
   is_lead?: boolean;
 }
 
@@ -114,7 +115,7 @@ export default function InboundServicePage() {
   }, [client?.user_id, selectedNumId, toast]);
 
   const fetchLogs = useCallback(async (numId: string) => {
-    if (!numId) return;
+    if (!numId || !client?.user_id) return;
     setLogsLoading(true);
     try {
       const { data: rawLogData, error: logError } = await supabase
@@ -125,7 +126,12 @@ export default function InboundServicePage() {
         .order("created_at", { ascending: false });
 
       if (logError) throw logError;
-      setLogs((rawLogData as CallLog[]) || []);
+      const mapped: CallLog[] = (rawLogData || []).map((d: any) => ({
+        ...d,
+        phone: d.phone || d.caller_number || d.caller_id || "",
+        created_at: d.created_at || d.started_at || null,
+      }));
+      setLogs(mapped);
     } catch (error: any) {
       console.error("Error fetching inbound logs:", error);
       toast({
@@ -136,7 +142,15 @@ export default function InboundServicePage() {
     } finally {
       setLogsLoading(false);
     }
-  }, [toast]);
+  }, [client?.user_id, toast]);
+
+  const handleRefresh = useCallback(async () => {
+    await fetchNumbers();
+    if (selectedNumId) {
+      await fetchLogs(selectedNumId);
+    }
+  }, [fetchNumbers, fetchLogs, selectedNumId]);
+
 
   useEffect(() => {
     if (client?.user_id) {
@@ -211,7 +225,13 @@ export default function InboundServicePage() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={fetchNumbers} disabled={loading || logsLoading}>
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={handleRefresh} 
+            disabled={loading || logsLoading}
+            title="Refresh numbers and history"
+          >
             <RefreshCw className={cn("h-4 w-4", (loading || logsLoading) && "animate-spin")} />
           </Button>
         </div>
@@ -259,8 +279,12 @@ export default function InboundServicePage() {
                     <TableBody>
                       {logs.map((log) => (
                         <TableRow key={log.id}>
-                          <TableCell className="font-medium">{log.caller_number}</TableCell>
-                          <TableCell>{format(new Date(log.created_at), "MMM d, yyyy h:mm a")}</TableCell>
+                          <TableCell className="font-medium">{log.phone}</TableCell>
+                          <TableCell>
+                            {log.created_at
+                              ? format(new Date(log.created_at), "MMM d, yyyy h:mm a")
+                              : "—"}
+                          </TableCell>
                           <TableCell>{formatDuration(log.duration)}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn(
@@ -342,9 +366,11 @@ export default function InboundServicePage() {
                       {logs.slice(0, 5).map(log => (
                         <div key={log.id} className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors">
                           <div className="flex flex-col">
-                            <span className="text-sm font-medium">{log.caller_number}</span>
+                            <span className="text-sm font-medium">{log.phone}</span>
                             <span className="text-[10px] text-muted-foreground">
-                              {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                              {log.created_at
+                                ? formatDistanceToNow(new Date(log.created_at), { addSuffix: true })
+                                : "No date"}
                             </span>
                           </div>
                           <div className="flex items-center gap-3">
@@ -409,8 +435,12 @@ export default function InboundServicePage() {
                     <TableBody>
                       {leads.map((lead) => (
                         <TableRow key={lead.id}>
-                          <TableCell className="font-medium">{lead.caller_number}</TableCell>
-                          <TableCell>{format(new Date(lead.created_at), "MMM d, yyyy h:mm a")}</TableCell>
+                          <TableCell className="font-medium">{lead.phone}</TableCell>
+                          <TableCell>
+                            {lead.created_at
+                              ? format(new Date(lead.created_at), "MMM d, yyyy h:mm a")
+                              : "—"}
+                          </TableCell>
                           <TableCell>{formatDuration(lead.duration)}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-200">
@@ -439,7 +469,7 @@ export default function InboundServicePage() {
           <DialogHeader>
             <DialogTitle>Call Details</DialogTitle>
             <DialogDescription>
-              Details and transcript for the call with {selectedLog?.caller_number}
+              Details and transcript for the call with {selectedLog?.phone}
             </DialogDescription>
           </DialogHeader>
           {selectedLog && (
@@ -447,7 +477,11 @@ export default function InboundServicePage() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground block">Date & Time</span>
-                  <span className="font-medium">{format(new Date(selectedLog.created_at), "MMM d, yyyy h:mm a")}</span>
+                  <span className="font-medium">
+                    {selectedLog.created_at
+                      ? format(new Date(selectedLog.created_at), "MMM d, yyyy h:mm a")
+                      : "Unknown Time"}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block">Duration</span>

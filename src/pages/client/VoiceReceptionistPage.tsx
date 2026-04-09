@@ -210,7 +210,11 @@ export default function VoiceReceptionistPage() {
       .eq("call_type", "inbound")
       .order("executed_at", { ascending: false })
       .limit(10);
-    setRecentCalls((data as CallLog[]) || []);
+    const mapped = (data || []).map((d: any) => ({
+      ...d,
+      executed_at: d.executed_at || d.created_at || null
+    }));
+    setRecentCalls(mapped as CallLog[]);
   }
 
   async function fetchChartData() {
