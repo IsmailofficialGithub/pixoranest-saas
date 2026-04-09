@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
-  PhoneIncoming, Settings, PhoneCall, History, Play, Pause, Trash2, RefreshCw, Bot, User, Smartphone, Info, Save, MessageSquare, Volume2, Mic, CheckCircle, Clock
+  PhoneIncoming, Settings, PhoneCall, History, Play, Pause, Trash2, RefreshCw, Bot, User, Smartphone, Info, Save, MessageSquare, Volume2, Mic, CheckCircle, Clock, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,9 +73,13 @@ interface CallLog {
   is_lead?: boolean;
 }
 
+import { useClient } from "@/contexts/ClientContext";
+
 export default function InboundServicePage() {
   const { toast } = useToast();
+  const { client, isLoading: clientLoading } = useClient();
   const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(false);
   const [assignedNumbers, setAssignedNumbers] = useState<InboundNumber[]>([]);
   const [selectedNumId, setSelectedNumId] = useState<string | null>(null);
   const [logs, setLogs] = useState<CallLog[]>([]);
@@ -83,49 +87,70 @@ export default function InboundServicePage() {
 
   const leads = useMemo(() => logs.filter(l => l.is_lead), [logs]);
 
-  const fetchInitialData = useCallback(async () => {
+  const fetchNumbers = useCallback(async () => {
+    if (!client?.user_id) return;
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       // 1. Fetch assigned numbers
       const { data: rawNums, error: numError } = await supabase
         .from("inbound_numbers" as any)
         .select("*")
-        .eq("assigned_user_id", user.id);
-
-      const nums = rawNums as any[] | null;
+        .eq("assigned_user_id", client.user_id);
 
       if (numError) throw numError;
+
+      const nums = rawNums as InboundNumber[] | null;
       setAssignedNumbers(nums || []);
 
-      if (nums && nums.length > 0) {
-        const firstNum = nums[0];
-        setSelectedNumId(firstNum.id);
-
-        // 3. Fetch call logs
-        const { data: rawLogData } = await supabase
-          .from("inbound_call_logs" as any)
-          .select("*")
-          .eq("number_id", firstNum.id)
-          .order("created_at", { ascending: false });
-
-        const logData = rawLogData as any[] | null;
-        setLogs(logData || []);
+      if (nums && nums.length > 0 && !selectedNumId) {
+        setSelectedNumId(nums[0].id);
       }
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      console.error("Error fetching inbound numbers:", error);
+      toast({ title: "Error", description: "Failed to fetch assigned numbers: " + error.message, variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  }, [client?.user_id, selectedNumId, toast]);
+
+  const fetchLogs = useCallback(async (numId: string) => {
+    if (!numId) return;
+    setLogsLoading(true);
+    try {
+      const { data: rawLogData, error: logError } = await supabase
+        .from("inbound_call_logs" as any)
+        .select("*")
+        // .eq("number_id", numId)
+        .eq("owner_user_id", client?.user_id)
+        .order("created_at", { ascending: false });
+
+      if (logError) throw logError;
+      setLogs((rawLogData as CallLog[]) || []);
+    } catch (error: any) {
+      console.error("Error fetching inbound logs:", error);
+      toast({
+        title: "Error fetching logs",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setLogsLoading(false);
     }
   }, [toast]);
 
   useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
+    if (client?.user_id) {
+      fetchNumbers();
+    }
+  }, [client?.user_id, fetchNumbers]);
 
-  if (loading) return <LoadingSkeleton />;
+  useEffect(() => {
+    if (selectedNumId) {
+      fetchLogs(selectedNumId);
+    }
+  }, [selectedNumId, fetchLogs]);
+
+  if (clientLoading || (loading && assignedNumbers.length === 0)) return <LoadingSkeleton />;
 
   if (assignedNumbers.length === 0) {
     return (
@@ -138,7 +163,7 @@ export default function InboundServicePage() {
           You don't have any inbound phone numbers assigned to your account yet.
           Please contact support or your administrator to get a number.
         </p>
-        <Button variant="outline" onClick={fetchInitialData}>
+        <Button variant="outline" onClick={fetchNumbers}>
           <RefreshCw className="mr-2 h-4 w-4" /> Refresh Status
         </Button>
       </div>
@@ -150,16 +175,16 @@ export default function InboundServicePage() {
 
   return (
     <div className="space-y-6">
-        {/* Configuration Warning Banner */}
-        {!isBotReady && (
-          <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-2xl p-4 flex items-center gap-3 mb-6">
-            <Bot className="h-6 w-6 shrink-0" />
-            <div>
-              <p className="text-sm font-bold">Bot Configuration Incomplete</p>
-              <p className="text-xs opacity-80">This inbound number setup is missing provider agent ID or bot name coordinates. Contact your administrator to complete the configuration.</p>
-            </div>
+      {/* Configuration Warning Banner */}
+      {!isBotReady && (
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-2xl p-4 flex items-center gap-3 mb-6">
+          <Bot className="h-6 w-6 shrink-0" />
+          <div>
+            <p className="text-sm font-bold">Bot Configuration Incomplete</p>
+            <p className="text-xs opacity-80">This inbound number setup is missing provider agent ID or bot name coordinates. Contact your administrator to complete the configuration.</p>
           </div>
-        )}
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -186,8 +211,8 @@ export default function InboundServicePage() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={fetchInitialData}>
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="outline" size="icon" onClick={fetchNumbers} disabled={loading || logsLoading}>
+            <RefreshCw className={cn("h-4 w-4", (loading || logsLoading) && "animate-spin")} />
           </Button>
         </div>
       </div>
@@ -209,7 +234,12 @@ export default function InboundServicePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {logs.length === 0 ? (
+              {logsLoading ? (
+                <div className="text-center py-20">
+                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary/50" />
+                  <p className="mt-2 text-sm text-muted-foreground">Fetching call logs...</p>
+                </div>
+              ) : logs.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <PhoneCall className="h-10 w-10 mx-auto text-muted-foreground/30 mb-4" />
                   <p>No calls recorded yet.</p>
@@ -353,7 +383,12 @@ export default function InboundServicePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {leads.length === 0 ? (
+              {logsLoading ? (
+                <div className="text-center py-20">
+                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary/50" />
+                  <p className="mt-2 text-sm text-muted-foreground">Fetching leads...</p>
+                </div>
+              ) : leads.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <User className="h-10 w-10 mx-auto text-muted-foreground/30 mb-4" />
                   <p>No leads captured yet.</p>
