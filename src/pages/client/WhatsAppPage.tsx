@@ -693,6 +693,7 @@ function SendMessageModal({
   }, [content, variables]);
 
   const handleSend = async () => {
+    console.log("🚀 Sending WhatsApp Message:")
     if (!phone.trim()) return toast({ title: "Phone required", variant: "destructive" });
     if (requiresMedia && !mediaUrl.trim()) return toast({ title: `${headerFormat} URL required`, variant: "destructive" });
     
@@ -701,20 +702,23 @@ function SendMessageModal({
     try {
       if (bot?.provider_type === 'api') {
         const bodyParams = detectedVariables.map((v: string) => variables[v.replace(/[{}]/g, '')] || "");
-        await sendWhatsAppMessage({
+        const result = await sendWhatsAppMessage({
           to: phone.trim(),
           body: previewContent,
           application_id: bot.id,
           client_id: clientId,
           phoneNoId: bot.api_config?.phone_id,
-          baseUrl: bot.api_config?.panel_url,
           type: (requiresMedia ? headerFormat?.toLowerCase() : messageType) as any,
           name: templateName,
           language: selectedLanguage,
           mediaUrl: mediaUrl.trim() || undefined,
           bodyParams
-        }, bot.api_config?.api_key);
-        toast({ title: "Message sent!" });
+        });
+        if (result.success) {
+          toast({ title: "Message sent!" });
+        } else {
+          toast({ title: "Error", description: result.message, variant: "destructive" });
+        }
       } else {
         await supabase.from("whatsapp_messages").insert({
           client_id: clientId, application_id: selectedAppId, phone_number: phone.trim(),

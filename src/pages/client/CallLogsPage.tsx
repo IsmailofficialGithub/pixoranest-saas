@@ -3,6 +3,7 @@ import { useClient } from "@/contexts/ClientContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { formatDuration, parseDuration } from "@/utils/duration";
 import { format, formatDistanceToNow, subDays, startOfDay, endOfDay } from "date-fns";
 import {
   Phone, Play, Pause, Download, FileText, Users, Search, Filter, X,
@@ -79,12 +80,7 @@ const DATE_PRESETS = [
   { label: "Last 30 days", days: 30 },
 ];
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds || seconds <= 0) return "0s";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
+// formatDuration moved to src/utils/duration.ts
 
 const PAGE_SIZE = 50;
 
@@ -132,14 +128,14 @@ export default function CallLogsPage() {
     if (!client) return;
     (async () => {
       const { data } = await (supabase as any)
-        .from("outbound_scheduled_calls")
-        .select("id, list_id, outbound_contact_lists(name)")
+        .from("outbound_contact_lists")
+        .select("id, name")
         .eq("owner_user_id", client.user_id)
         .order("created_at", { ascending: false });
 
       const mapped = (data || []).map((d: any) => ({
         id: d.id,
-        campaign_name: d.outbound_contact_lists?.name || 'Outbound Campaign'
+        campaign_name: d.name || 'Outbound Campaign'
       }));
       setCampaigns(mapped);
     })();
@@ -150,99 +146,81 @@ export default function CallLogsPage() {
     if (!client) return;
     setLoading(true);
 
-    // Fetch from both tables
-    const [standardRes, outboundRes] = await Promise.all([
-      supabase
-        .from("call_logs")
-        .select("*", { count: "exact" })
-        .eq("client_id", client.id)
-        .order("executed_at", { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1),
-      (supabase as any)
+    try {
+      let query = (supabase as any)
         .from("outbound_call_logs")
-        .select("*", { count: "exact" })
-        .eq("owner_user_id", client.user_id)
+        .select("*, list_id", { count: "exact" })
+        .eq("owner_user_id", client.user_id);
+
+      // Apply list filter at DB level for outbound logs
+      if (campaignFilter !== "all" && campaignFilter) {
+        query = query.eq("list_id", campaignFilter);
+      }
+
+      const { data, error, count } = await query
         .order("created_at", { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-    ]);
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    if (standardRes.error || outboundRes.error) {
-      console.error("Error fetching call logs:", standardRes.error || outboundRes.error);
+      if (error) {
+        console.error("Error fetching call logs:", error);
+        toast.error("Failed to load call logs");
+        setLoading(false);
+        return;
+      }
+
+      setTotalCount(count || 0);
+
+      const { data: leadsData } = await supabase
+        .from("leads")
+        .select("id, phone")
+        .eq("client_id", client.id);
+
+      const leadPhoneMap = new Map(leadsData?.map(l => [l.phone, l.id]) || []);
+      const campaignMap = new Map(campaigns.map(c => [c.id, c.campaign_name]));
+
+      // Map outbound logs
+      let enriched: CallLogEntry[] = (data || []).map((l: any) => ({
+        id: l.id,
+        phone_number: l.phone,
+        status: l.call_status,
+        duration_seconds: parseDuration(l.duration),
+        ai_summary: l.transcript,
+        recording_url: l.call_url,
+        transcript: l.transcript,
+        executed_at: l.created_at || l.started_at || null,
+        call_type: l.call_type,
+        cost: 0,
+        contact_name: l.name || null,
+        campaign_id: l.list_id ? String(l.list_id) : (l.scheduled_call_id ? String(l.scheduled_call_id) : null),
+        campaign_name: (l.list_id ? campaignMap.get(String(l.list_id)) : null) || (l.scheduled_call_id ? campaignMap.get(String(l.scheduled_call_id)) : null) || null,
+        lead_id: leadPhoneMap.get(l.phone) || null,
+        lead_score: null,
+      }));
+
+      // Apply client-side filters
+      if (debouncedSearch) {
+        const s = debouncedSearch.toLowerCase();
+        enriched = enriched.filter(l => 
+          l.phone_number.toLowerCase().includes(s) || 
+          (l.ai_summary || "").toLowerCase().includes(s) ||
+          (l.contact_name || "").toLowerCase().includes(s)
+        );
+      }
+
+      if (statusFilters.length > 0) {
+        enriched = enriched.filter(l => statusFilters.includes(l.status || ""));
+      }
+
+      if (leadsOnly) {
+        enriched = enriched.filter(l => l.lead_id);
+      }
+
+      setCallLogs(enriched);
+    } catch (err) {
+      console.error("fetchCallLogs error:", err);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setTotalCount((standardRes.count || 0) + (outboundRes.count || 0));
-
-    const campaignMap = new Map(campaigns.map(c => [c.id, c.campaign_name]));
-
-    // Map standard logs
-    const standardMapped: CallLogEntry[] = (standardRes.data || []).map((l: any) => ({
-      id: l.id,
-      phone_number: l.phone_number,
-      status: l.status,
-      duration_seconds: l.duration_seconds,
-      ai_summary: l.ai_summary,
-      recording_url: l.recording_url,
-      transcript: l.transcript,
-      executed_at: l.executed_at ?? l.created_at ?? null,
-      call_type: l.call_type,
-      cost: 0,
-      contact_name: null,
-      campaign_id: l.service_id,
-      campaign_name: null,
-      lead_id: null,
-      lead_score: null,
-    }));
-
-    // Map outbound logs
-    const outboundMapped: CallLogEntry[] = (outboundRes.data || []).map((l: any) => ({
-      id: l.id,
-      phone_number: l.phone,
-      status: l.call_status,
-      duration_seconds: l.duration,
-      ai_summary: l.transcript,
-      recording_url: l.call_url,
-      transcript: l.transcript,
-      executed_at: l.created_at || l.started_at || null,
-      call_type: l.call_type,
-      cost: 0,
-      contact_name: l.name || null,
-      campaign_id: l.scheduled_call_id || null,
-      campaign_name: l.scheduled_call_id ? campaignMap.get(l.scheduled_call_id) || null : null,
-      lead_id: null,
-      lead_score: null,
-    }));
-
-    // Combine and sort
-    let enriched = [...standardMapped, ...outboundMapped].sort(
-      (a, b) => new Date(b.executed_at || 0).getTime() - new Date(a.executed_at || 0).getTime()
-    );
-
-    // Apply client-side filters
-    if (debouncedSearch) {
-      const s = debouncedSearch.toLowerCase();
-      enriched = enriched.filter(l => 
-        l.phone_number.toLowerCase().includes(s) || 
-        (l.ai_summary || "").toLowerCase().includes(s) ||
-        (l.contact_name || "").toLowerCase().includes(s)
-      );
-    }
-
-    if (statusFilters.length > 0) {
-      enriched = enriched.filter(l => statusFilters.includes(l.status || ""));
-    }
-
-    if (campaignFilter !== "all") {
-      enriched = enriched.filter(l => l.campaign_id === campaignFilter);
-    }
-    
-    if (leadsOnly) {
-      enriched = enriched.filter(l => l.lead_id);
-    }
-
-    setCallLogs(enriched.slice(0, PAGE_SIZE));
-    setLoading(false);
   }, [client, page, debouncedSearch, statusFilters, dateFrom, dateTo, campaignFilter, leadsOnly, campaigns]);
 
   useEffect(() => {
@@ -1065,7 +1043,8 @@ function MarkAsLeadModal({
     setSaving(true);
     const { error } = await supabase.from("leads").insert({
       client_id: clientId,
-      call_log_id: call.id,
+      // call_log_id is fkey to standard call_logs, so we leave it null for outbound logs
+      call_log_id: null,
       campaign_id: call.campaign_id || null,
       lead_source: "telecaller" as const,
       name: name || null,

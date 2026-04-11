@@ -13,6 +13,7 @@ import {
   TrendingUp, AlertCircle, CheckCircle2, XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatDuration } from "@/utils/duration";
 import {
   ChartContainer, ChartTooltip, ChartTooltipContent,
 } from "@/components/ui/chart";
@@ -513,10 +514,4 @@ export default function VoiceAgentPage() {
   );
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds === 0) return "0s";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m === 0) return `${s}s`;
-  return `${m}m ${s}s`;
-}
+// formatDuration moved to src/utils/duration.ts

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useClient } from "@/contexts/ClientContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigate, useNavigate } from "react-router-dom";
+import { formatDuration } from "@/utils/duration";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -861,12 +862,7 @@ function CallActionBadge({ metadata, status }: { metadata: any; status: string |
   return <Badge variant="secondary" className="text-[10px]">{status || "Unknown"}</Badge>;
 }
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return "0s";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
+// formatDuration moved to src/utils/duration.ts
 
 function LoadingSkeleton() {
   return (

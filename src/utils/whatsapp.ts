@@ -1,7 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export const WHATSAPP_API_URL = "https://app.whapihub.com/v2/whatsapp-business";
 const DEFAULT_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
+const SEND_MESSAGE_WEBHOOK_URL = import.meta.env.VITE_SEND_MESSAGE_WEBHOOK_URL || "https://auto.devdabs.com/webhook/send-text-message";
 
 export interface SendWhatsAppMessageParams {
   to: string;
@@ -15,27 +17,13 @@ export interface SendWhatsAppMessageParams {
   phoneNoId?: string;
   application_id: string;
   client_id?: string; // Optional for admin tests
-  api_key?: string;
-  baseUrl?: string;
 }
 
 /**
  * Sends a message via WhatsApp and logs it to our local database history.
  */
-export async function sendWhatsAppMessage(params: SendWhatsAppMessageParams, apiKey?: string) {
-  const token = apiKey || params.api_key || DEFAULT_API_KEY;
-  if (!token) throw new Error("WhatsApp API Key is missing. Add it to .env or pass it as an argument.");
+export async function sendWhatsAppMessage(params: SendWhatsAppMessageParams) {
   try {
-    // 1. Determine the correct API URL - ignore user-provided URL if it's likely wrong
-    let targetUrl = WHATSAPP_API_URL;
-
-    // In development, use the local proxy to avoid CORS
-    if (import.meta.env.DEV) {
-      targetUrl = targetUrl.replace("https://app.whapihub.com", "/whapi");
-    }
-
-    // Append the messages suffix
-    targetUrl = targetUrl.endsWith("/") ? targetUrl + "messages" : targetUrl + "/messages";
 
     // 2. Build the request body based on message type
     const requestBody: any = {
@@ -79,53 +67,55 @@ export async function sendWhatsAppMessage(params: SendWhatsAppMessageParams, api
     }
 
     console.log("🚀 Sending WhatsApp Payload:", JSON.stringify(requestBody, null, 2));
-
-    const response = await fetch(targetUrl, {
+    console.log("🚀 Sending WhatsApp Payload:", SEND_MESSAGE_WEBHOOK_URL);
+    const response = await fetch(SEND_MESSAGE_WEBHOOK_URL, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`, // Switched to Bearer format as per working curl
-        "Content-Type": "application/json",
-      },
       body: JSON.stringify(requestBody),
     });
 
     const result = await response.json();
-    console.log("📥 WhatsApp API Response:", result);
+    if (result.success) {
+      console.log("📥 WhatsApp API Response:", result);
+      // 2. Log the message to our Supabase database (only if client_id is present)
+      if (params.client_id) {
+        let logContent = params.body ?? params.text ?? "";
+        if (params.type === "template") {
+          logContent = `Template: ${params.name} | Variables: ${params.bodyParams?.join(", ") || "none"}`;
+        }
 
-    if (!response.ok) {
-      throw new Error(result?.message || result?.error || "Failed to send WhatsApp message");
-    }
+        console.log('Heree')
 
-    // 2. Log the message to our Supabase database (only if client_id is present)
-    if (params.client_id) {
-      let logContent = params.body ?? params.text ?? "";
-      if (params.type === "template") {
-        logContent = `Template: ${params.name} | Variables: ${params.bodyParams?.join(", ") || "none"}`;
+        const { error: dbError } = await (supabase.from("whatsapp_messages" as any) as any).insert({
+          application_id: params.application_id,
+          client_id: params.client_id,
+          phone_number: params.to,
+          message_content: logContent,
+          message_type: params.type || "text",
+          template_name: params.name || null,
+          status: "sent",
+          metadata: { whatsapp_message_id: result?.id || null },
+          sent_at: new Date().toISOString(),
+          wamid: result?.wamid || null,
+        });
+
+        if (dbError) {
+          console.warn("Message Send but failed to log in history:", dbError);
+          return { success: false, message: "Message sent but failed to log in history" };
+        }
+      } else {
+        console.log("Admin test message detected, skipping database log.");
+        return { success: true, message: "Message sent successfully" };
       }
 
-      const { error: dbError } = await (supabase.from("whatsapp_messages" as any) as any).insert({
-        application_id: params.application_id,
-        client_id: params.client_id,
-        phone_number: params.to,
-        message_content: logContent,
-        message_type: params.type || "text",
-        template_name: params.name || null,
-        status: "sent",
-        metadata: { whatsapp_message_id: result?.id || null },
-        sent_at: new Date().toISOString(),
-      });
-
-      if (dbError) {
-        console.warn("Message sent but failed to log in history:", dbError);
-      }
     } else {
-      console.log("Admin test message detected, skipping database log.");
+      console.error("📥 WhatsApp API Response:", result);
+      return { success: false, message: result?.message || result?.error || "Failed to send WhatsApp message" };
     }
 
-    return result;
+
   } catch (error: any) {
     console.error("WhatsApp Send Error:", error);
-    throw error;
+    return { success: false, message: error.message || "Failed to send WhatsApp message" };
   }
 }
 
@@ -194,7 +184,7 @@ export async function createWhatsAppTemplate(applicationId: string, templateData
   // 2. Call REAL API to create template on Meta/WhatsApp platform
   const token = bot.api_config.api_key;
   let targetUrl = WHATSAPP_API_URL;
-  
+
   // In development, use the local proxy to avoid CORS
   if (import.meta.env.DEV) {
     targetUrl = targetUrl.replace("https://app.whapihub.com", "/whapi");

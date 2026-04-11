@@ -3,6 +3,7 @@ import { useParams, useNavigate, Navigate } from "react-router-dom";
 import { useClient } from "@/contexts/ClientContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { formatDuration, parseDuration } from "@/utils/duration";
 import {
   ArrowLeft, Phone, CheckCircle, Users, DollarSign,
   Play, Pause, Trash2, Copy, Download, FileText, BarChart3,
@@ -45,6 +46,7 @@ interface Campaign {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  source?: "scheduled" | "voice" | "list";
 }
 
 interface CallLog {
@@ -103,12 +105,7 @@ const CALL_STATUS_CONFIG: Record<string, { icon: typeof Phone; color: string }> 
 
 const PIE_COLORS = ["#22c55e", "#eab308", "#94a3b8", "#ef4444", "#3b82f6"];
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds || seconds <= 0) return "0s";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
+// formatDuration moved to src/utils/duration.ts
 
 function formatElapsed(startedAt: string | null): string {
   if (!startedAt) return "—";
@@ -149,54 +146,159 @@ export default function CampaignDetailPage() {
   // Fetch campaign
   const fetchCampaign = useCallback(async () => {
     if (!campaignId || !client) return;
-    const { data: schedData, error } = await supabase
-      .from("outbound_scheduled_calls")
-      .select("*, outbound_contact_lists(*)")
-      .eq("id", campaignId)
-      .eq("owner_user_id", client.user_id)
-      .maybeSingle();
+    setLoading(true);
 
-    if (error || !schedData) {
+    try {
+      // 1. Primary: Try fetching from outbound_contact_lists (Telecaller Campaigns)
+      const { data: listData } = await (supabase as any)
+        .from("outbound_contact_lists")
+        .select("*")
+        .eq("id", campaignId)
+        .eq("owner_user_id", client.user_id)
+        .maybeSingle();
+
+      if (listData) {
+        // Perform live counts as summary columns might be delayed or missing
+        const { count: actualTotal } = await (supabase as any)
+          .from("outbound_contacts")
+          .select("*", { count: "exact", head: true })
+          .eq("list_id", campaignId);
+
+        const { count: actualCalled } = await (supabase as any)
+          .from("outbound_call_logs")
+          .select("*", { count: "exact", head: true })
+          .eq("list_id", campaignId);
+
+        const { count: actualAnswered } = await (supabase as any)
+          .from("outbound_call_logs")
+          .select("*", { count: "exact", head: true })
+          .eq("list_id", campaignId)
+          .in("call_status", ["completed", "answered"]);
+
+        // Fetch scheduled calls separately
+        const { data: scheds } = await (supabase as any)
+          .from("outbound_scheduled_calls")
+          .select("*")
+          .eq("list_id", campaignId)
+          .order("created_at", { ascending: false });
+
+        const latestSched = scheds?.[0];
+
+        setCampaign({
+          id: listData.id,
+          campaign_name: listData.name || "Campaign",
+          campaign_type: "Telecaller",
+          status: latestSched?.status || "draft",
+          script: listData.description,
+          total_contacts: actualTotal || listData.contact_count || 0,
+          contacts_called: actualCalled || 0,
+          contacts_answered: actualAnswered || 0,
+          scheduled_at: latestSched?.scheduled_at || null,
+          started_at: listData.created_at,
+          completed_at: latestSched?.completed_at || null,
+          created_at: listData.created_at,
+          source: "list",
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 2. Secondary: Try fetching from voice_campaigns (General Voice Agent campaigns)
+      const { data: voiceData } = await (supabase as any)
+        .from("voice_campaigns")
+        .select("*")
+        .eq("id", campaignId)
+        .maybeSingle();
+
+      if (voiceData) {
+        setCampaign({
+          ...voiceData,
+          campaign_type: voiceData.campaign_type || "Voice Agent",
+          source: "voice",
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 3. Fallback: Try fetching from outbound_scheduled_calls (maybe it's a specific execution ID)
+      const { data: schedData } = await (supabase as any)
+        .from("outbound_scheduled_calls")
+        .select("*")
+        .eq("id", campaignId)
+        .maybeSingle();
+
+      if (schedData) {
+        // Fetch list if found via schedData
+        const { data: relatedList } = await (supabase as any)
+          .from("outbound_contact_lists")
+          .select("*")
+          .eq("id", schedData.list_id)
+          .maybeSingle();
+
+        let status = schedData.status;
+        const total = (schedData as any).total_contacts || 0;
+        const called = (schedData as any).contacts_called || 0;
+        
+        if (status === 'running' && total > 0 && called >= total) {
+          status = 'completed';
+        }
+
+        setCampaign({
+          id: schedData.id,
+          campaign_name: (schedData as any).name || relatedList?.name || "Campaign",
+          campaign_type: "Telecaller",
+          status: status,
+          script: relatedList?.description || (schedData as any).description,
+          total_contacts: total,
+          contacts_called: called,
+          contacts_answered: (schedData as any).contacts_answered || 0,
+          scheduled_at: schedData.scheduled_at,
+          started_at: schedData.created_at,
+          completed_at: (schedData as any).completed_at,
+          created_at: schedData.created_at,
+          source: "scheduled",
+        });
+        setLoading(false);
+        return;
+      }
+
       setNotFound(true);
+    } catch (err) {
+      console.error("Error fetching campaign:", err);
+      toast.error("Failed to load campaign details");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    // Map `outbound_scheduled_calls` to expected shape
-    const list = schedData.outbound_contact_lists;
-    setCampaign({
-      id: schedData.id,
-      campaign_name: list?.name || "Campaign",
-      campaign_type: "Telecaller",
-      status: schedData.status,
-      script: list?.description,
-      total_contacts: 0,
-      contacts_called: 0,
-      contacts_answered: 0,
-      scheduled_at: schedData.scheduled_at,
-      started_at: schedData.created_at, // Use created as rough proxy
-      completed_at: null,
-      created_at: schedData.created_at,
-    });
-    setLoading(false);
   }, [campaignId, client]);
 
   // Fetch call logs & activity
   const fetchCallLogs = useCallback(async () => {
-    if (!campaignId || !client) return;
+    if (!campaignId || !client || !campaign) return;
     
-    // In actual implementation, we'd query outbound_call_logs where scheduled_call_id = campaignId.
-    const { data: logs } = await supabase
-      .from("outbound_call_logs")
-      .select("*")
-      .eq("scheduled_call_id", campaignId)
-      .order("created_at", { ascending: false });
+    let logsData: any[] = [];
 
-    const mapped = (logs || []).map((l: any) => ({
+    if (campaign.source === "voice") {
+      const { data } = await (supabase as any)
+        .from("call_logs")
+        .select("*")
+        .eq("campaign_id", campaignId)
+        .order("executed_at", { ascending: false });
+      logsData = data || [];
+    } else {
+      // Telecaller: check both scheduled_call_id and list_id
+      const { data } = await (supabase as any)
+        .from("outbound_call_logs")
+        .select("*")
+        .or(`scheduled_call_id.eq.${campaignId},list_id.eq.${campaignId}`)
+        .order("created_at", { ascending: false });
+      logsData = data || [];
+    }
+
+    const mapped = (logsData || []).map((l: any) => ({
       id: l.id,
       phone_number: l.phone,
       status: l.call_status,
-      duration_seconds: l.duration,
+      duration_seconds: parseDuration(l.duration),
       ai_summary: l.transcript,
       recording_url: l.call_url,
       transcript: l.transcript,
@@ -223,14 +325,17 @@ export default function CampaignDetailPage() {
 
   // Fetch leads
   const fetchLeads = useCallback(async () => {
-    if (!campaignId) return;
+    if (!campaignId || !client) return;
+    
+    // Try both naming conventions in metadata and direct column
     const { data } = await supabase
       .from("leads")
       .select("*")
-      .eq("campaign_id", campaignId)
-      .order("created_at", { ascending: false });
+      .eq("client_id", client.id)
+      .or(`campaign_id.eq.${campaignId},metadata->>campaign_id.eq.${campaignId},metadata->>list_id.eq.${campaignId}`);
+    
     setLeads((data || []) as Lead[]);
-  }, [campaignId]);
+  }, [campaignId, client]);
 
   useEffect(() => {
     if (client && campaignId) {
@@ -249,7 +354,7 @@ export default function CampaignDetailPage() {
       .on("postgres_changes", {
         event: "*",
         schema: "public",
-        table: "outbound_scheduled_calls",
+        table: "outbound_contact_lists",
         filter: `id=eq.${campaignId}`,
       }, () => fetchCampaign())
       .on("postgres_changes", {
@@ -275,41 +380,119 @@ export default function CampaignDetailPage() {
     if (!campaign) return;
     setActionLoading(true);
     const newStatus = campaign.status === "running" ? "paused" : "running";
-    const { error } = await supabase
-      .from("outbound_scheduled_calls")
-      .update({ status: newStatus as any })
-      .eq("id", campaign.id);
-    if (error) toast.error("Failed to update campaign");
-    else toast.success(newStatus === "paused" ? "Campaign paused" : "Campaign resumed");
-    setPauseDialog(false);
-    setActionLoading(false);
-    fetchCampaign();
+    
+    try {
+      let query;
+      if (campaign.source === "voice") {
+        query = (supabase as any).from("voice_campaigns").update({ status: newStatus }).eq("id", campaign.id);
+      } else if (campaign.source === "list") {
+        query = (supabase as any).from("outbound_scheduled_calls").update({ status: newStatus }).eq("list_id", campaign.id);
+      } else {
+        query = (supabase as any).from("outbound_scheduled_calls").update({ status: newStatus }).eq("id", campaign.id);
+      }
+      
+      const { error } = await query;
+      if (error) throw error;
+
+      // Optional: Signal webhook for list-based dialer
+      if (campaign.source === "list") {
+        const webhookUrl = import.meta.env.VITE_N8N_OUTBOUND_LIST_IMMEDIATE_CALLS_WEBHOOK;
+        if (webhookUrl) {
+          await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              campaign_id: campaign.id,
+              list_id: campaign.id,
+              status: newStatus,
+              action: newStatus === "running" ? "resume" : "pause",
+              client_id: client?.id
+            }),
+          });
+        }
+      }
+
+      toast.success(newStatus === "paused" ? "Campaign paused" : "Campaign resumed");
+      setPauseDialog(false);
+    } catch (err) {
+      console.error("Update error:", err);
+      toast.error("Failed to update campaign");
+    } finally {
+      setActionLoading(false);
+      fetchCampaign();
+    }
   }
 
   async function handleDelete() {
     if (!campaign || deleteConfirmName !== campaign.campaign_name) return;
     setActionLoading(true);
-    const { error } = await supabase.from("outbound_scheduled_calls").delete().eq("id", campaign.id);
-    if (error) toast.error("Failed to delete campaign");
-    else {
+    
+    try {
+      if (campaign.source === "voice") {
+        await (supabase as any).from("voice_campaigns").delete().eq("id", campaign.id);
+      } else if (campaign.source === "list") {
+        await (supabase as any).from("outbound_scheduled_calls").delete().eq("list_id", campaign.id);
+        await (supabase as any).from("outbound_contact_lists").delete().eq("id", campaign.id);
+      } else {
+        await (supabase as any).from("outbound_scheduled_calls").delete().eq("id", campaign.id);
+      }
+      
       toast.success("Campaign deleted");
       navigate("/client/voice-telecaller");
+    } catch (error) {
+      console.error("Error deleting campaign:", error);
+      toast.error("Failed to delete campaign");
+    } finally {
+      setActionLoading(false);
+      setDeleteDialog(false);
     }
-    setActionLoading(false);
-    setDeleteDialog(false);
   }
 
   async function handleLaunchNow() {
     if (!campaign) return;
     setActionLoading(true);
-    const { error } = await supabase
-      .from("outbound_scheduled_calls")
-      .update({ status: "running" as any })
-      .eq("id", campaign.id);
-    if (error) toast.error("Failed to launch");
-    else toast.success("Campaign launched!");
-    setActionLoading(false);
-    fetchCampaign();
+    
+    try {
+      let query;
+      if (campaign.source === "voice") {
+        query = (supabase as any).from("voice_campaigns").update({ status: "running" }).eq("id", campaign.id);
+      } else if (campaign.source === "list") {
+        query = (supabase as any).from("outbound_scheduled_calls").update({ status: "running" }).eq("list_id", campaign.id);
+      } else {
+        query = (supabase as any).from("outbound_scheduled_calls").update({ status: "running" }).eq("id", campaign.id);
+      }
+      
+      const { error } = await query;
+      if (error) throw error;
+
+      // Trigger Webhook for List-based campaigns (same as wizard)
+      if (campaign.source === "list") {
+        const webhookUrl = import.meta.env.VITE_N8N_OUTBOUND_LIST_IMMEDIATE_CALLS_WEBHOOK;
+        if (webhookUrl) {
+          await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              campaign_id: campaign.id,
+              list_id: campaign.id,
+              campaign_name: campaign.campaign_name,
+              status: "running",
+              action: "launch",
+              client_id: client?.id,
+              user_id: client?.user_id
+            }),
+          });
+        }
+      }
+
+      toast.success("Campaign launched!");
+    } catch (err) {
+      console.error("Launch error:", err);
+      toast.error("Failed to launch");
+    } finally {
+      setActionLoading(false);
+      fetchCampaign();
+    }
   }
 
   function exportCallLogsCsv() {

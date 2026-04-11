@@ -20,6 +20,7 @@ import {
   RadialBarChart, RadialBar,
 } from "recharts";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, differenceInDays, eachDayOfInterval } from "date-fns";
+import { formatDuration } from "@/utils/duration";
 
 type DateRange = "7d" | "30d" | "90d" | "this_month" | "last_month";
 
@@ -263,14 +264,7 @@ export default function ClientAnalyticsPage() {
     URL.revokeObjectURL(url);
   }
 
-  function formatDuration(seconds: number) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    if (h > 0) return `${h}h ${m}m`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-  }
+// formatDuration moved to src/utils/duration.ts
 
   if (ctxLoading || loading) {
     return (

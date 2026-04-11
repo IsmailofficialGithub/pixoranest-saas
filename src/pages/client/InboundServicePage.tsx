@@ -85,6 +85,7 @@ export default function InboundServicePage() {
   const [selectedNumId, setSelectedNumId] = useState<string | null>(null);
   const [logs, setLogs] = useState<CallLog[]>([]);
   const [selectedLog, setSelectedLog] = useState<CallLog | null>(null);
+  const [isMarkingLead, setIsMarkingLead] = useState(false);
 
   const leads = useMemo(() => logs.filter(l => l.is_lead), [logs]);
 
@@ -150,6 +151,40 @@ export default function InboundServicePage() {
       await fetchLogs(selectedNumId);
     }
   }, [fetchNumbers, fetchLogs, selectedNumId]);
+
+  const handleToggleLeadStatus = async () => {
+    if (!selectedLog || !client) return;
+    setIsMarkingLead(true);
+    try {
+      const newStatus = !selectedLog.is_lead;
+      const { error } = await supabase
+        .from("inbound_call_logs" as any)
+        .update({ is_lead: newStatus })
+        .eq("id", selectedLog.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setLogs(prev => prev.map(l => 
+        l.id === selectedLog.id ? { ...l, is_lead: newStatus } : l
+      ));
+      
+      setSelectedLog(prev => prev ? { ...prev, is_lead: newStatus } : null);
+
+      toast({
+        title: newStatus ? "Marked as Lead" : "Lead Status Removed",
+        description: `Successfully ${newStatus ? 'marked' : 'unmarked'} ${selectedLog.phone} as a lead.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to update lead status: " + error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsMarkingLead(false);
+    }
+  };
 
 
   useEffect(() => {
@@ -473,7 +508,8 @@ export default function InboundServicePage() {
             </DialogDescription>
           </DialogHeader>
           {selectedLog && (
-            <div className="space-y-4 pt-4">
+            <>
+              <div className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground block">Date & Time</span>
@@ -524,10 +560,26 @@ export default function InboundServicePage() {
                 </div>
               </div>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedLog(null)}>Close</Button>
-          </DialogFooter>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button 
+                variant={selectedLog.is_lead ? "destructive" : "default"} 
+                className={cn(!selectedLog.is_lead && "bg-green-600 hover:bg-green-700")}
+                onClick={handleToggleLeadStatus}
+                disabled={isMarkingLead}
+              >
+                {isMarkingLead ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : selectedLog.is_lead ? (
+                  <User className="h-4 w-4 mr-2" />
+                ) : (
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                )}
+                {selectedLog.is_lead ? "Remove Lead Status" : "Mark as Lead"}
+              </Button>
+              <Button variant="outline" onClick={() => setSelectedLog(null)}>Close</Button>
+            </DialogFooter>
+          </>
+        )}
         </DialogContent>
       </Dialog>
     </div>

@@ -21,14 +21,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
 import { initiateInstantCall } from "@/lib/instant-call";
 import {
   Phone, CheckCircle, Users, Plus, MoreVertical, Play,
   FileText, ArrowRight, Lightbulb, ChevronDown, X,
-  Pause, Copy, Trash2, Eye, Zap,
+  Pause, Copy, Trash2, Eye, Zap, Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { formatDuration, parseDurationToSeconds } from "@/utils/duration";
 import CreateCampaignWizard from "@/components/client/telecaller/CreateCampaignWizard";
 
 interface CampaignStats {
@@ -88,6 +91,7 @@ export default function VoiceTelecallerPage() {
     transcript?: string;
   } | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [leadModalCall, setLeadModalCall] = useState<CallLog | null>(null);
 
   // Check access
   const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller" || s.service_slug === "ai-voice-telecaller");
@@ -171,21 +175,64 @@ export default function VoiceTelecallerPage() {
 
   async function fetchCampaigns() {
     if (!client) return;
-    const { data } = await (supabase as any).from("outbound_contact_lists")
-      .select(`id, name, description, created_at`)
-      .eq("owner_user_id", client.user_id)
-      .order("created_at", { ascending: false });
+    
+    try {
+      // 1. Fetch lists
+      const { data: lists, error: listError } = await (supabase as any).from("outbound_contact_lists")
+        .select(`id, name, description, created_at`)
+        .eq("owner_user_id", client.user_id)
+        .order("created_at", { ascending: false });
 
-    if (data) {
-      const mapped = data.map((d: any) => ({
-        id: d.id,
-        campaign_name: d.name || 'Outbound Campaign',
-        status: 'running', // Fallback as we don't track status directly in lists
-        created_at: d.created_at,
-        scheduled_at: null,
-        list_id: d.id
-      }));
+      if (listError) throw listError;
+      
+      if (!lists || lists.length === 0) {
+        setCampaigns([]);
+        return;
+      }
+
+      // 2. Fetch schedules for these lists separately to avoid relationship mapping issues
+      const listIds = lists.map((l: any) => l.id);
+      const { data: schedules, error: schedError } = await (supabase as any).from("outbound_scheduled_calls")
+        .select("id, list_id, status, scheduled_at, created_at, total_contacts, contacts_called")
+        .in("list_id", listIds);
+
+      if (schedError) {
+        console.error("Error fetching schedules:", schedError);
+      }
+
+      const mapped = lists.map((d: any) => {
+        const listSchedules = schedules?.filter((s: any) => s.list_id === d.id) || [];
+        
+        // Get newest schedule by created_at or id
+        const latestSched = listSchedules.length > 0 
+          ? [...listSchedules].sort((a: any, b: any) => {
+              const dateA = new Date(a.created_at || a.scheduled_at || 0).getTime();
+              const dateB = new Date(b.created_at || b.scheduled_at || 0).getTime();
+              return dateB - dateA;
+            })[0]
+          : null;
+
+        let status = latestSched?.status || 'running';
+        
+        // Auto-complete if all contacts are called
+        const total = latestSched?.total_contacts || 0;
+        const called = latestSched?.contacts_called || 0;
+        if (status === 'running' && total > 0 && called >= total) {
+          status = 'completed';
+        }
+
+        return {
+          id: d.id,
+          campaign_name: d.name || 'Outbound Campaign',
+          status: status,
+          created_at: d.created_at,
+          scheduled_at: latestSched?.scheduled_at || null,
+          list_id: d.id
+        };
+      });
       setCampaigns(mapped);
+    } catch (err) {
+      console.error("fetchCampaigns error:", err);
     }
   }
 
@@ -215,18 +262,32 @@ export default function VoiceTelecallerPage() {
 
   async function fetchOutboundLeads() {
     if (!client) return;
-    const { data } = await (supabase as any).from("outbound_leads")
-      .select(`
-        id, status, notes, created_at,
-        outbound_call_logs ( id, transcript, phone, name )
-      `)
-      .eq("owner_user_id", client.user_id)
-      .order("created_at", { ascending: false })
-      .limit(10);
+    try {
+      const { data: leads, error: leadError } = await (supabase as any).from("outbound_leads")
+        .select(`id, status, notes, created_at, call_log_id`)
+        .eq("owner_user_id", client.user_id)
+        .order("created_at", { ascending: false })
+        .limit(10);
 
-    if (data) {
-      const mapped = data.map((d: any) => {
-        const callLog = Array.isArray(d.outbound_call_logs) ? d.outbound_call_logs[0] : d.outbound_call_logs;
+      if (leadError) throw leadError;
+      if (!leads || leads.length === 0) {
+        setOutboundLeads([]);
+        return;
+      }
+
+      // Fetch call logs for these leads
+      const logIds = leads.map((l: any) => l.id).filter(Boolean); // Actually it might be linked via table relation or a column
+      // Looking at the previous code, it used a nested select on 'outbound_call_logs'.
+      // If there's no direct foreign key on outbound_leads table, we might need to know how they relate.
+      // Usually outbound_leads.id matches some field in call_logs or vice versa.
+      // Based on previous code: outbound_call_logs ( id, transcript, phone, name )
+      
+      const { data: logs } = await (supabase as any).from("outbound_call_logs")
+        .select("id, transcript, phone, name")
+        .in("id", leads.map((l: any) => l.call_log_id || l.id)); // Fallback to id if call_log_id doesn't exist
+
+      const mapped = leads.map((d: any) => {
+        const callLog = logs?.find((l: any) => l.id === d.call_log_id || l.id === d.id);
         return {
           id: d.id,
           status: d.status,
@@ -236,10 +297,12 @@ export default function VoiceTelecallerPage() {
           name: callLog?.name,
           transcript: callLog?.transcript,
           call_log_id: callLog?.id,
-          executed_at: callLog?.created_at || null,
+          executed_at: d.created_at || null,
         };
       });
       setOutboundLeads(mapped);
+    } catch (err) {
+      console.error("fetchOutboundLeads error:", err);
     }
   }
 
@@ -522,6 +585,7 @@ export default function VoiceTelecallerPage() {
                 campaign={campaign}
                 primaryColor={primaryColor}
                 navigate={navigate}
+                onRefresh={fetchCampaigns}
               />
             ))}
           </div>
@@ -622,7 +686,7 @@ export default function VoiceTelecallerPage() {
                                 }}>
                                   <FileText className="h-3 w-3 mr-2" /> View Transcript
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setLeadModalCall(call)}>
                                   <Users className="h-3 w-3 mr-2" /> Mark as Lead
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -731,11 +795,41 @@ export default function VoiceTelecallerPage() {
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button onClick={() => setDetailsModalOpen(false)}>Close</Button>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" size="sm" onClick={() => {
+              setLeadModalCall({
+                id: "manual",
+                phone_number: selectedCallData?.phone || "",
+                contact_name: selectedCallData?.name || null,
+                ai_summary: selectedCallData?.transcript || null,
+                status: selectedCallData?.status || "completed",
+                duration_seconds: 0,
+                executed_at: selectedCallData?.time || new Date().toISOString(),
+                recording_url: null,
+                call_type: "outbound"
+              });
+              setDetailsModalOpen(false);
+            }}>
+              <Users className="h-4 w-4 mr-2" /> Mark as Lead
+            </Button>
+            <Button size="sm" onClick={() => setDetailsModalOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mark as Lead Modal */}
+      {leadModalCall && (
+        <MarkAsLeadModal
+          call={leadModalCall}
+          clientId={client.id}
+          onClose={() => setLeadModalCall(null)}
+          onCreated={() => {
+            setLeadModalCall(null);
+            toast.success("Lead created successfully!");
+            fetchOutboundLeads();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -777,16 +871,32 @@ function StatsCard({
 }
 
 function CampaignCard({
-  campaign, primaryColor, navigate,
+  campaign, primaryColor, navigate, onRefresh,
 }: {
-  campaign: Campaign;
+  campaign: Campaign & { list_id?: string };
   primaryColor: string;
   navigate: (path: string) => void;
+  onRefresh: () => void;
 }) {
   const [isUpdating, setIsUpdating] = useState(false);
 
   async function updateStatus(newStatus: string) {
-    toast.info("Status updates are not supported for this campaign type.");
+    setIsUpdating(true);
+    try {
+      const { error } = await (supabase as any)
+        .from("outbound_scheduled_calls")
+        .update({ status: newStatus })
+        .eq("list_id", campaign.id);
+      
+      if (error) throw error;
+
+      toast.success(`Campaign ${newStatus === 'running' ? 'resumed' : 'paused'}`);
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsUpdating(false);
+    }
   }
 
   async function deleteCampaign() {
@@ -829,10 +939,20 @@ function CampaignCard({
               <DropdownMenuItem onClick={() => navigate(`/client/voice-telecaller/campaigns/${campaign.id}`)}>
                 <Eye className="h-3 w-3 mr-2" /> View Details
               </DropdownMenuItem>
+              {campaign.status === "running" && (
+                <DropdownMenuItem onClick={() => updateStatus("paused")}>
+                  <Pause className="h-3 w-3 mr-2" /> Pause Campaign
+                </DropdownMenuItem>
+              )}
+              {campaign.status === "paused" && (
+                <DropdownMenuItem onClick={() => updateStatus("running")}>
+                  <Play className="h-3 w-3 mr-2" /> Resume Campaign
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => navigate(`/client/voice-telecaller/calls?campaign=${campaign.id}`)}>
                 <Phone className="h-3 w-3 mr-2" /> View Calls
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/client/leads")}>
+              <DropdownMenuItem onClick={() => navigate(`/client/leads?campaign=${campaign.id}`)}>
                 <Users className="h-3 w-3 mr-2" /> View Leads
               </DropdownMenuItem>
               <DropdownMenuItem onClick={deleteCampaign} className="text-destructive focus:text-destructive">
@@ -874,58 +994,7 @@ function CallStatusBadge({ status }: { status: string }) {
   return <Badge variant={c.variant} className="text-[10px]">{c.label}</Badge>;
 }
 
-function formatDuration(seconds: any): string {
-  const totalSeconds = Number(seconds);
-  if (isNaN(totalSeconds) || totalSeconds <= 0) return "0s";
-
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = Math.floor(totalSeconds % 60);
-
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
-/**
- * Parses duration strings like "00:49", "01:23:45", or "0.00:52.00" into total seconds.
- */
-function parseDurationToSeconds(duration: any): number {
-  if (!duration) return 0;
-  if (typeof duration === 'number') return Math.floor(duration);
-
-  const str = String(duration).trim();
-  if (!str) return 0;
-
-  // Handle "MM:SS" or "HH:MM:SS" or "DAYS.HH:MM:SS"
-  if (str.includes(':')) {
-    const parts = str.split(':');
-    let totalSeconds = 0;
-
-    // Reverse parts so we process seconds, then minutes, then hours
-    const reversedParts = [...parts].reverse();
-
-    // Seconds (can have decimals/ms)
-    if (reversedParts[0]) {
-      totalSeconds += parseFloat(reversedParts[0]) || 0;
-    }
-
-    // Minutes
-    if (reversedParts[1]) {
-      totalSeconds += (parseFloat(reversedParts[1]) || 0) * 60;
-    }
-
-    // Hours
-    if (reversedParts[2]) {
-      // Handle cases like "0.00" as hours or "1.00"
-      totalSeconds += (parseFloat(reversedParts[2]) || 0) * 3600;
-    }
-
-    return Math.floor(totalSeconds);
-  }
-
-  // If no colon, try to parse as number
-  return Math.floor(parseFloat(str)) || 0;
-}
+// formatDuration and parseDurationToSeconds moved to src/utils/duration.ts
 
 function LoadingSkeleton() {
   return (
@@ -937,5 +1006,98 @@ function LoadingSkeleton() {
       <Skeleton className="h-64" />
       <Skeleton className="h-48" />
     </div>
+  );
+}
+
+/* ─── Mark as Lead Modal ─── */
+function MarkAsLeadModal({
+  call, clientId, onClose, onCreated,
+}: {
+  call: CallLog;
+  clientId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState(call.contact_name || "");
+  const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [score, setScore] = useState([50]);
+  const [interest, setInterest] = useState([5]);
+  const [notes, setNotes] = useState(call.ai_summary || "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!clientId) return;
+    setSaving(true);
+    const { error } = await supabase.from("leads").insert({
+      client_id: clientId,
+      // call_log_id: call.id === "manual" ? null : call.id,
+      lead_source: "telecaller" as const,
+      name: name || null,
+      phone: call.phone_number,
+      email: email || null,
+      company: company || null,
+      lead_score: score[0],
+      interest_level: interest[0],
+      status: "new" as const,
+      notes: notes || null,
+    });
+    setSaving(false);
+    if (error) {
+      toast.error("Failed to create lead");
+      console.error(error);
+    } else {
+      onCreated();
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create Lead</DialogTitle>
+          <DialogDescription>From call to {call.phone_number}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Name</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Contact name" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Phone</Label>
+            <Input value={call.phone_number} disabled className="font-mono" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Email</Label>
+              <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Company</Label>
+              <Input value={company} onChange={e => setCompany(e.target.value)} placeholder="Company name" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Lead Score: {score[0]}/100</Label>
+            <Slider value={score} max={100} step={1} onValueChange={setScore} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Interest Level: {interest[0]}/10</Label>
+            <Slider value={interest} max={10} step={1} onValueChange={setInterest} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Notes</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Additional notes..." />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            Save Lead
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
