@@ -8,7 +8,7 @@ import {
   ArrowLeft, Phone, CheckCircle, Users, DollarSign,
   Play, Pause, Trash2, Copy, Download, FileText, BarChart3,
   Loader2, Clock, PhoneCall, PhoneOff, PhoneMissed,
-  AlertTriangle, Pencil, Rocket,
+  AlertTriangle, Pencil, Rocket, MessageSquare, Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -129,6 +129,7 @@ export default function CampaignDetailPage() {
   const [activeTab, setActiveTab] = useState("overview");
 
   // Dialogs
+  const [selectedCall, setSelectedCall] = useState<CallLog | null>(null);
   const [pauseDialog, setPauseDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
@@ -284,6 +285,24 @@ export default function CampaignDetailPage() {
         .eq("campaign_id", campaignId)
         .order("executed_at", { ascending: false });
       logsData = data || [];
+
+      const { data: leadsData } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("campaign_id", campaignId);
+
+      // Enrich leads with recording info from call logs
+      const enrichedLeads = (leadsData || []).map(lead => {
+        const matchingLog = (logsData || []).find(log => log.phone === lead.phone);
+        return {
+          ...lead,
+          recording_url: (matchingLog as any)?.call_url || null,
+          duration_seconds: (matchingLog as any)?.duration_seconds || 0,
+          transcript: lead.notes || (matchingLog as any)?.transcript || null,
+          status: lead.status || 'qualified'
+        };
+      });
+      setLeads(enrichedLeads as any[]);
     } else {
       // Telecaller: check both scheduled_call_id and list_id
       const { data } = await (supabase as any)
@@ -799,6 +818,7 @@ export default function CampaignDetailPage() {
                     <TableHead>Duration</TableHead>
                     <TableHead className="hidden md:table-cell">AI Summary</TableHead>
                     <TableHead>Time</TableHead>
+                    <TableHead className="w-10 text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -821,6 +841,17 @@ export default function CampaignDetailPage() {
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {log.executed_at ? formatDistanceToNow(new Date(log.executed_at), { addSuffix: true }) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 hover:text-primary" 
+                            title="View Details" 
+                            onClick={() => setSelectedCall(log)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );
@@ -852,18 +883,38 @@ export default function CampaignDetailPage() {
                         {lead.company && <span>{lead.company}</span>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {lead.lead_score != null && (
-                        <Badge variant="outline" className="text-xs">Score: {lead.lead_score}</Badge>
-                      )}
-                      <Badge className={
-                        lead.status === "qualified" ? "bg-green-100 text-green-700 border-0" :
-                        lead.status === "converted" ? "bg-blue-100 text-blue-700 border-0" :
-                        "bg-muted text-muted-foreground border-0"
-                      }>
-                        {lead.status || "new"}
-                      </Badge>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        {lead.lead_score != null && (
+                          <Badge variant="outline" className="text-xs">Score: {lead.lead_score}</Badge>
+                        )}
+                        <Badge className={
+                          lead.status === "qualified" ? "bg-green-100 text-green-700 border-0" :
+                          lead.status === "converted" ? "bg-blue-100 text-blue-700 border-0" :
+                          "bg-muted text-muted-foreground border-0"
+                        }>
+                          {lead.status || "qualified"}
+                        </Badge>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 ml-2 hover:text-primary" 
+                          title="View Details" 
+                          onClick={() => {
+                            setSelectedCall({
+                              id: lead.id,
+                              phone: lead.phone,
+                              contact_name: lead.name,
+                              status: lead.status || 'qualified',
+                              duration_seconds: (lead as any).duration_seconds || 0,
+                              recording_url: (lead as any).recording_url || null,
+                              transcript: lead.transcript,
+                              executed_at: lead.created_at
+                            } as any);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
                   </CardContent>
                 </Card>
               ))}
@@ -977,6 +1028,77 @@ export default function CampaignDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Call Details Modal */}
+      <Dialog open={!!selectedCall} onOpenChange={(open) => !open && setSelectedCall(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Call Details</DialogTitle>
+            <DialogDescription>
+              Details and transcript for the call with {selectedCall?.phone_number || "Customer"}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedCall && (
+            <div className="space-y-4 pt-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground block">Date & Time</span>
+                  <span className="font-medium">
+                    {selectedCall.executed_at ? format(new Date(selectedCall.executed_at), "dd MMM yyyy, hh:mm a") : "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Duration</span>
+                  <span className="font-medium">{formatDuration(selectedCall.duration_seconds || 0)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Status</span>
+                  <CallStatusBadge status={selectedCall.status || 'unknown'} />
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Contact Name</span>
+                  <span className="font-medium">{selectedCall.contact_name || "—"}</span>
+                </div>
+              </div>
+
+              {selectedCall.recording_url && (
+                <div className="pt-2 border-t">
+                  <span className="text-sm font-medium mb-2 block flex items-center gap-2">
+                    <Play className="h-4 w-4" /> Recording
+                  </span>
+                  <audio controls className="w-full h-10" src={selectedCall.recording_url} />
+                </div>
+              )}
+
+              <div className="pt-2 border-t">
+                <span className="text-sm font-medium mb-2 block flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" /> Transcript / AI Summary
+                </span>
+                <div className="bg-muted p-3 rounded-md max-h-[200px] overflow-y-auto text-sm whitespace-pre-wrap">
+                  {selectedCall.transcript || selectedCall.ai_summary ? (selectedCall.transcript || selectedCall.ai_summary) : <span className="text-muted-foreground italic">No transcript available for this call.</span>}
+                </div>
+              </div>
+
+              <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t mt-4">
+                <Button 
+                  className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => {
+                    // Navigate or open lead modal - in this page we don't have lead modal state imported like VoiceTelecallerPage, 
+                    // so we just show the details or might need more complex logic. 
+                    // But for consistency let's at least have the close button.
+                    setSelectedCall(null);
+                    // navigate to leads tab if needed? 
+                    setActiveTab("leads");
+                  }}
+                >
+                  <Users className="h-4 w-4 mr-2" /> View Leads
+                </Button>
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => setSelectedCall(null)}>Close</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1051,5 +1173,23 @@ function DurationChart({ callLogs, primaryColor }: { callLogs: CallLog[]; primar
         </LineChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+function CallStatusBadge({ status }: { status: string }) {
+  const config: Record<string, { label: string; color: string; bg: string; border: string }> = {
+    completed: { label: "Completed", color: "text-green-600", bg: "bg-green-50", border: "border-green-200" },
+    answered: { label: "Answered", color: "text-green-600", bg: "bg-green-50", border: "border-green-200" },
+    busy: { label: "Busy", color: "text-yellow-600", bg: "bg-yellow-50", border: "border-yellow-200" },
+    no_answer: { label: "No Answer", color: "text-muted-foreground", bg: "bg-muted/50", border: "border-border" },
+    failed: { label: "Failed", color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
+    initiated: { label: "Initiated", color: "text-blue-500", bg: "bg-blue-50", border: "border-blue-200" },
+    ringing: { label: "Ringing", color: "text-blue-500", bg: "bg-blue-50", border: "border-blue-200" },
+  };
+  const c = config[status] || { label: status, color: "text-muted-foreground", bg: "bg-muted/50", border: "border-border" };
+  return (
+    <Badge variant="outline" className={`uppercase text-[10px] ${c.color} ${c.bg} ${c.border}`}>
+      {c.label}
+    </Badge>
   );
 }

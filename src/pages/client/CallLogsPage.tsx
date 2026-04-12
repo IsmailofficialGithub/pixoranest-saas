@@ -9,7 +9,7 @@ import {
   Phone, Play, Pause, Download, FileText, Users, Search, Filter, X,
   MoreVertical, Volume2, ChevronLeft, ChevronRight, Loader2, PhoneCall,
   PhoneOff, PhoneMissed, AlertTriangle, CheckCircle, Trash2, StickyNote,
-  Share2, SkipForward, SkipBack,
+  Share2, SkipForward, SkipBack, MessageSquare, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 // ─── Types ───
 interface CallLogEntry {
@@ -110,8 +111,7 @@ export default function CallLogsPage() {
   const [showFilters, setShowFilters] = useState(false);
 
   // Modals
-  const [playerCall, setPlayerCall] = useState<CallLogEntry | null>(null);
-  const [transcriptCall, setTranscriptCall] = useState<CallLogEntry | null>(null);
+  const [selectedCall, setSelectedCall] = useState<CallLogEntry | null>(null);
   const [leadModal, setLeadModal] = useState<CallLogEntry | null>(null);
 
   // Bulk selection
@@ -558,14 +558,21 @@ export default function CallLogsPage() {
                             : "—"}
                         </TableCell>
                         <TableCell>
-                          <CallActions call={call} onPlay={setPlayerCall} onTranscript={setTranscriptCall} onMarkLead={setLeadModal} navigate={navigate} onInstantCall={async (c) => {
-                            try {
-                              await initiateInstantCall(c.phone_number, c.contact_name || "Customer", client.user_id);
-                              toast.success(`Calling ${c.phone_number}...`);
-                            } catch (err: any) {
-                              toast.error("Failed to initiate call: " + err.message);
-                            }
-                          }} />
+                          <CallActions 
+                            call={call} 
+                            onPlay={(c) => setSelectedCall(c)} 
+                            onTranscript={(c) => setSelectedCall(c)} 
+                            onMarkLead={setLeadModal} 
+                            navigate={navigate} 
+                            onInstantCall={async (c) => {
+                              try {
+                                await initiateInstantCall(c.phone_number, c.contact_name || "Customer", client.user_id);
+                                toast.success(`Calling ${c.phone_number}...`);
+                              } catch (err: any) {
+                                toast.error("Failed to initiate call: " + err.message);
+                              }
+                            }} 
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -611,8 +618,8 @@ export default function CallLogsPage() {
                       </span>
                       <div className="flex gap-1">
                         {call.recording_url && (
-                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setPlayerCall(call)}>
-                            <Play className="h-3 w-3 mr-1" /> Play
+                          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setSelectedCall(call)} title="Play Recording">
+                            <Play className="h-4 w-4" />
                           </Button>
                         )}
                         {call.lead_id ? (
@@ -626,14 +633,22 @@ export default function CallLogsPage() {
                             <Users className="h-3 w-3 mr-1" /> Lead
                           </Button>
                         )}
-                        <CallActions call={call} onPlay={setPlayerCall} onTranscript={setTranscriptCall} onMarkLead={setLeadModal} navigate={navigate} onInstantCall={async (c) => {
-                          try {
-                            await initiateInstantCall(c.phone_number, c.contact_name || "Customer", client.user_id);
-                            toast.success(`Calling ${c.phone_number}...`);
-                          } catch (err: any) {
-                            toast.error("Failed to initiate call: " + err.message);
-                          }
-                        }} compact />
+                        <CallActions 
+                          call={call} 
+                          onPlay={(c) => setSelectedCall(c)} 
+                          onTranscript={(c) => setSelectedCall(c)} 
+                          onMarkLead={setLeadModal} 
+                          navigate={navigate} 
+                          onInstantCall={async (c) => {
+                            try {
+                              await initiateInstantCall(c.phone_number, c.contact_name || "Customer", client.user_id);
+                              toast.success(`Calling ${c.phone_number}...`);
+                            } catch (err: any) {
+                              toast.error("Failed to initiate call: " + err.message);
+                            }
+                          }} 
+                          compact 
+                        />
                       </div>
                     </div>
                   </CardContent>
@@ -659,23 +674,72 @@ export default function CallLogsPage() {
         </>
       )}
 
-      {/* Audio Player Modal */}
-      {playerCall && (
-        <AudioPlayerModal
-          call={playerCall}
-          onClose={() => setPlayerCall(null)}
-          onMarkLead={() => { setPlayerCall(null); setLeadModal(playerCall); }}
-          primaryColor={primaryColor}
-        />
-      )}
+      {/* Call Details Modal */}
+      <Dialog open={!!selectedCall} onOpenChange={(open) => !open && setSelectedCall(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Call Details</DialogTitle>
+            <DialogDescription>
+              Details and transcript for the call with {selectedCall?.phone_number || "Customer"}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedCall && (
+            <div className="space-y-4 pt-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground block">Date & Time</span>
+                  <span className="font-medium">
+                    {selectedCall.executed_at ? format(new Date(selectedCall.executed_at), "dd MMM yyyy, hh:mm a") : "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Duration</span>
+                  <span className="font-medium">{formatDuration(selectedCall.duration_seconds || 0)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Status</span>
+                  <CallStatusBadge status={selectedCall.status} />
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Contact Name</span>
+                  <span className="font-medium">{selectedCall.contact_name || "—"}</span>
+                </div>
+              </div>
 
-      {/* Transcript Modal */}
-      {transcriptCall && (
-        <TranscriptModal
-          call={transcriptCall}
-          onClose={() => setTranscriptCall(null)}
-        />
-      )}
+              {selectedCall.recording_url && (
+                <div className="pt-2 border-t">
+                  <span className="text-sm font-medium mb-2 block flex items-center gap-2">
+                    <Play className="h-4 w-4" /> Recording
+                  </span>
+                  <audio controls className="w-full h-10" src={selectedCall.recording_url} />
+                </div>
+              )}
+
+              <div className="pt-2 border-t">
+                <span className="text-sm font-medium mb-2 block flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" /> Transcript / AI Summary
+                </span>
+                <div className="bg-muted p-3 rounded-md max-h-[200px] overflow-y-auto text-sm whitespace-pre-wrap">
+                  {selectedCall.transcript || selectedCall.ai_summary ? (selectedCall.transcript || selectedCall.ai_summary) : <span className="text-muted-foreground italic">No transcript available for this call.</span>}
+                </div>
+              </div>
+
+              <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t mt-4">
+                <Button 
+                  className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => {
+                    setLeadModal(selectedCall);
+                    setSelectedCall(null);
+                  }}
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" /> Mark as Lead
+                </Button>
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => setSelectedCall(null)}>Close</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Mark as Lead Modal */}
       {leadModal && (
@@ -693,11 +757,20 @@ export default function CallLogsPage() {
 /* ─── Sub Components ─── */
 
 function CallStatusBadge({ status }: { status: string | null }) {
-  const cfg = CALL_STATUS_CONFIG[status || ""] || { icon: Phone, color: "text-muted-foreground", label: status || "Unknown" };
-  const Icon = cfg.icon;
+  const config: Record<string, { label: string; color: string; bg: string; border: string }> = {
+    completed: { label: "Completed", color: "text-green-600", bg: "bg-green-50", border: "border-green-200" },
+    answered: { label: "Answered", color: "text-green-600", bg: "bg-green-50", border: "border-green-200" },
+    busy: { label: "Busy", color: "text-yellow-600", bg: "bg-yellow-50", border: "border-yellow-200" },
+    no_answer: { label: "No Answer", color: "text-muted-foreground", bg: "bg-muted/50", border: "border-border" },
+    failed: { label: "Failed", color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
+    initiated: { label: "Initiated", color: "text-blue-500", bg: "bg-blue-50", border: "border-blue-200" },
+    ringing: { label: "Ringing", color: "text-blue-500", bg: "bg-blue-50", border: "border-blue-200" },
+  };
+  const s = status || "unknown";
+  const c = config[s] || { label: s, color: "text-muted-foreground", bg: "bg-muted/50", border: "border-border" };
   return (
-    <Badge variant="outline" className={`text-xs gap-1 ${cfg.color}`}>
-      <Icon className="h-3 w-3" /> {cfg.label}
+    <Badge variant="outline" className={cn("uppercase text-[10px]", c.color, c.bg, c.border)}>
+      {c.label}
     </Badge>
   );
 }
@@ -758,268 +831,7 @@ function CallActions({
   );
 }
 
-/* ─── Audio Player Modal ─── */
-function AudioPlayerModal({
-  call, onClose, onMarkLead, primaryColor,
-}: {
-  call: CallLogEntry;
-  onClose: () => void;
-  onMarkLead: () => void;
-  primaryColor: string;
-}) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [volume, setVolume] = useState([80]);
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const onTime = () => setCurrentTime(audio.currentTime);
-    const onMeta = () => setDuration(audio.duration);
-    const onEnd = () => setIsPlaying(false);
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("loadedmetadata", onMeta);
-    audio.addEventListener("ended", onEnd);
-    return () => {
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("loadedmetadata", onMeta);
-      audio.removeEventListener("ended", onEnd);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume[0] / 100;
-  }, [volume]);
-
-  function togglePlay() {
-    if (!audioRef.current) return;
-    if (isPlaying) audioRef.current.pause();
-    else audioRef.current.play();
-    setIsPlaying(!isPlaying);
-  }
-
-  function seek(pct: number[]) {
-    if (audioRef.current && duration) {
-      audioRef.current.currentTime = (pct[0] / 100) * duration;
-    }
-  }
-
-  function changeRate(rate: number) {
-    setPlaybackRate(rate);
-    if (audioRef.current) audioRef.current.playbackRate = rate;
-  }
-
-  function skip(seconds: number) {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds));
-    }
-  }
-
-  function formatTime(s: number) {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
-  }
-
-  // Parse transcript into timestamped lines
-  const transcriptLines = useMemo(() => {
-    if (!call.transcript) return [];
-    return call.transcript.split("\n").filter(Boolean).map(line => {
-      const match = line.match(/^\[(\d{2}:\d{2})\]\s*(.*?):\s*(.*)/);
-      if (match) {
-        const [, time, speaker, text] = match;
-        const [m, s] = time.split(":").map(Number);
-        return { time: m * 60 + s, timeStr: time, speaker, text };
-      }
-      return { time: 0, timeStr: "", speaker: "", text: line };
-    });
-  }, [call.transcript]);
-
-  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="flex items-center gap-2">
-                <Phone className="h-4 w-4" />
-                {call.contact_name || call.phone_number}
-              </DialogTitle>
-              <DialogDescription className="flex items-center gap-2 mt-1">
-                {call.phone_number}
-                {call.executed_at && <span>• {format(new Date(call.executed_at), "PPp")}</span>}
-                <CallStatusBadge status={call.status} />
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <audio ref={audioRef} src={call.recording_url || ""} preload="metadata" />
-
-        {/* Player Controls */}
-        <div className="space-y-4 py-4">
-          {/* Progress */}
-          <div className="space-y-1">
-            <Slider value={[progressPct]} max={100} step={0.1} onValueChange={seek} className="cursor-pointer" />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          {/* Controls row */}
-          <div className="flex items-center justify-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => skip(-10)}>
-              <SkipBack className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              className="h-12 w-12 rounded-full"
-              style={{ backgroundColor: primaryColor, color: "white" }}
-              onClick={togglePlay}
-            >
-              {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => skip(10)}>
-              <SkipForward className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Volume and speed */}
-          <div className="flex items-center gap-4 justify-center">
-            <div className="flex items-center gap-2 w-32">
-              <Volume2 className="h-3 w-3 text-muted-foreground shrink-0" />
-              <Slider value={volume} max={100} step={1} onValueChange={setVolume} />
-            </div>
-            <Select value={String(playbackRate)} onValueChange={v => changeRate(parseFloat(v))}>
-              <SelectTrigger className="w-20 h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[0.75, 1, 1.25, 1.5, 2].map(r => (
-                  <SelectItem key={r} value={String(r)}>{r}x</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {call.recording_url && (
-              <Button variant="ghost" size="sm" className="text-xs h-7" asChild>
-                <a href={call.recording_url} download><Download className="h-3 w-3 mr-1" /> Download</a>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Transcript */}
-        {transcriptLines.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Transcript</h4>
-            <div className="max-h-48 overflow-y-auto space-y-1 rounded-lg bg-muted p-3 text-xs">
-              {transcriptLines.map((line, i) => (
-                <div
-                  key={i}
-                  className={`flex gap-2 p-1 rounded cursor-pointer hover:bg-background/50 transition-colors ${line.time <= currentTime && (transcriptLines[i + 1]?.time ?? Infinity) > currentTime
-                    ? "bg-background shadow-sm"
-                    : ""
-                    }`}
-                  onClick={() => {
-                    if (audioRef.current && line.time) {
-                      audioRef.current.currentTime = line.time;
-                    }
-                  }}
-                >
-                  {line.timeStr && (
-                    <span className="text-muted-foreground shrink-0 font-mono">[{line.timeStr}]</span>
-                  )}
-                  {line.speaker && (
-                    <span className={`font-medium shrink-0 ${line.speaker.toLowerCase().includes("ai") ? "text-blue-600" : "text-green-600"
-                      }`}>
-                      {line.speaker}:
-                    </span>
-                  )}
-                  <span>{line.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* AI Summary */}
-        {call.ai_summary && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Call Summary</h4>
-            <p className="text-sm text-muted-foreground bg-muted rounded-lg p-3">{call.ai_summary}</p>
-          </div>
-        )}
-
-        {/* Quick actions */}
-        <DialogFooter className="gap-2">
-          {!call.lead_id && (
-            <Button variant="outline" size="sm" onClick={onMarkLead}>
-              <Users className="h-3 w-3 mr-1" /> Mark as Lead
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => {
-            navigator.clipboard.writeText(call.recording_url || "");
-            toast.success("Link copied!");
-          }}>
-            <Share2 className="h-3 w-3 mr-1" /> Share
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ─── Transcript Modal ─── */
-function TranscriptModal({ call, onClose }: { call: CallLogEntry; onClose: () => void }) {
-  function copyTranscript() {
-    navigator.clipboard.writeText(call.transcript || "");
-    toast.success("Transcript copied!");
-  }
-
-  function downloadTranscript() {
-    const blob = new Blob([call.transcript || ""], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `transcript_${call.phone_number}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>Call Transcript</DialogTitle>
-          <DialogDescription>{call.contact_name || call.phone_number}</DialogDescription>
-        </DialogHeader>
-        <div className="max-h-96 overflow-y-auto">
-          {call.transcript ? (
-            <pre className="text-sm whitespace-pre-wrap font-mono bg-muted rounded-lg p-4">
-              {call.transcript}
-            </pre>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">No transcript available for this call.</p>
-          )}
-        </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" size="sm" onClick={copyTranscript}>
-            <Share2 className="h-3 w-3 mr-1" /> Copy
-          </Button>
-          <Button variant="outline" size="sm" onClick={downloadTranscript}>
-            <Download className="h-3 w-3 mr-1" /> Download TXT
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 /* ─── Mark as Lead Modal ─── */
 function MarkAsLeadModal({

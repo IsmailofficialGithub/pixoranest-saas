@@ -27,12 +27,13 @@ import { initiateInstantCall } from "@/lib/instant-call";
 import {
   Phone, CheckCircle, Users, Plus, MoreVertical, Play,
   FileText, ArrowRight, Lightbulb, ChevronDown, X,
-  Pause, Copy, Trash2, Eye, Zap, Loader2,
+  Pause, Copy, Trash2, Eye, Zap, Loader2, MessageSquare, Clock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { formatDuration, parseDurationToSeconds } from "@/utils/duration";
 import CreateCampaignWizard from "@/components/client/telecaller/CreateCampaignWizard";
+import { cn } from "@/lib/utils";
 
 interface CampaignStats {
   totalCalls: number;
@@ -84,11 +85,14 @@ export default function VoiceTelecallerPage() {
   const [hasBot, setHasBot] = useState<boolean>(true); // assume true until checked
 
   const [selectedCallData, setSelectedCallData] = useState<{
+    id?: string;
     name?: string;
     phone?: string;
     status?: string;
     time?: string;
     transcript?: string;
+    duration_seconds?: number;
+    recording_url?: string | null;
   } | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [leadModalCall, setLeadModalCall] = useState<CallLog | null>(null);
@@ -278,29 +282,27 @@ export default function VoiceTelecallerPage() {
       // Fetch call logs for these leads
       const logIds = leads.map((l: any) => l.id).filter(Boolean); // Actually it might be linked via table relation or a column
       // Looking at the previous code, it used a nested select on 'outbound_call_logs'.
-      // If there's no direct foreign key on outbound_leads table, we might need to know how they relate.
-      // Usually outbound_leads.id matches some field in call_logs or vice versa.
-      // Based on previous code: outbound_call_logs ( id, transcript, phone, name )
-      
       const { data: logs } = await (supabase as any).from("outbound_call_logs")
-        .select("id, transcript, phone, name")
-        .in("id", leads.map((l: any) => l.call_log_id || l.id)); // Fallback to id if call_log_id doesn't exist
+        .select("id, transcript, phone, name, call_url, duration")
+        .in("id", leads.map((l: any) => l.call_log_id).filter(Boolean));
 
       const mapped = leads.map((d: any) => {
-        const callLog = logs?.find((l: any) => l.id === d.call_log_id || l.id === d.id);
+        const callLog = logs?.find((l: any) => l.id === d.call_log_id);
         return {
           id: d.id,
           status: d.status,
           notes: d.notes,
           created_at: d.created_at,
-          phone: callLog?.phone,
-          name: callLog?.name,
-          transcript: callLog?.transcript,
+          phone: callLog?.phone || "Unknown",
+          name: callLog?.name || "Customer",
+          transcript: callLog?.transcript || d.notes,
+          recording_url: callLog?.call_url || null,
+          duration_seconds: parseDurationToSeconds(callLog?.duration || "0:00"),
           call_log_id: callLog?.id,
           executed_at: d.created_at || null,
         };
       });
-      setOutboundLeads(mapped);
+      setOutboundLeads(mapped as any[]);
     } catch (err) {
       console.error("fetchOutboundLeads error:", err);
     }
@@ -453,9 +455,13 @@ export default function VoiceTelecallerPage() {
               onClick={() => setActiveTab(tab.key)}
             >
               {tab.label}
-              {tab.key !== "all" && tab.key !== "leads" && tab.key !== "call_logs" && (
+              {tab.key !== "all" && (
                 <span className="ml-1.5 text-[10px] opacity-70">
-                  ({campaigns.filter(c => tab.key === "all" ? true : c.status === tab.key).length})
+                  ({
+                    tab.key === "leads" ? outboundLeads.length :
+                    tab.key === "call_logs" ? recentCalls.length :
+                    campaigns.filter(c => c.status === tab.key).length
+                  })
                 </span>
               )}
             </Button>
@@ -490,11 +496,14 @@ export default function VoiceTelecallerPage() {
                           <TableCell className="text-right">
                             <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="View Details" onClick={() => {
                               setSelectedCallData({
+                                id: lead.id,
                                 name: lead.name,
                                 phone: lead.phone,
-                                status: lead.status,
+                                status: lead.status || 'qualified',
                                 time: lead.created_at,
-                                transcript: lead.transcript
+                                transcript: lead.transcript || lead.notes,
+                                duration_seconds: (lead as any).duration_seconds || 0,
+                                recording_url: (lead as any).recording_url || null
                               });
                               setDetailsModalOpen(true);
                             }}>
@@ -553,11 +562,14 @@ export default function VoiceTelecallerPage() {
                           <TableCell className="text-right">
                             <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="View Details" onClick={() => {
                               setSelectedCallData({
+                                id: call.id,
                                 name: call.contact_name,
                                 phone: call.phone_number,
                                 status: call.status,
                                 time: call.executed_at,
-                                transcript: call.ai_summary
+                                transcript: call.ai_summary,
+                                duration_seconds: call.duration_seconds,
+                                recording_url: call.recording_url
                               });
                               setDetailsModalOpen(true);
                             }}>
@@ -676,11 +688,14 @@ export default function VoiceTelecallerPage() {
                                 )}
                                 <DropdownMenuItem onClick={() => {
                                   setSelectedCallData({
+                                    id: call.id,
                                     name: call.contact_name,
                                     phone: call.phone_number,
                                     status: call.status,
                                     time: call.executed_at,
-                                    transcript: call.ai_summary
+                                    transcript: call.ai_summary,
+                                    duration_seconds: call.duration_seconds,
+                                    recording_url: call.recording_url
                                   });
                                   setDetailsModalOpen(true);
                                 }}>
@@ -762,58 +777,78 @@ export default function VoiceTelecallerPage() {
       </Dialog>
 
       <Dialog open={detailsModalOpen} onOpenChange={setDetailsModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-11/12 rounded-lg">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Details</DialogTitle>
+            <DialogTitle>Call Details</DialogTitle>
+            <DialogDescription>
+              Details and transcript for the call with {selectedCallData?.phone || "Customer"}
+            </DialogDescription>
           </DialogHeader>
           {selectedCallData && (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="font-semibold text-muted-foreground block mb-1">Contact Name</span>
-                  <span>{selectedCallData.name || "—"}</span>
+                  <span className="text-muted-foreground block">Date & Time</span>
+                  <span className="font-medium">
+                    {selectedCallData.time ? format(new Date(selectedCallData.time), "dd MMM yyyy, hh:mm a") : "—"}
+                  </span>
                 </div>
                 <div>
-                  <span className="font-semibold text-muted-foreground block mb-1">Phone Number</span>
-                  <span className="font-mono">{selectedCallData.phone || "—"}</span>
+                  <span className="text-muted-foreground block">Duration</span>
+                  <span className="font-medium">{formatDuration(selectedCallData.duration_seconds || 0)}</span>
                 </div>
                 <div>
-                  <span className="font-semibold text-muted-foreground block mb-1">Status</span>
-                  <span className="capitalize">{selectedCallData.status || "—"}</span>
+                  <span className="text-muted-foreground block">Status</span>
+                  <CallStatusBadge status={selectedCallData.status || 'unknown'} />
                 </div>
                 <div>
-                  <span className="font-semibold text-muted-foreground block mb-1">Time</span>
-                  <span>{selectedCallData.time ? format(new Date(selectedCallData.time), "dd MMM yyyy, hh:mm a") : "—"}</span>
+                  <span className="text-muted-foreground block">Contact Name</span>
+                  <span className="font-medium">{selectedCallData.name || "—"}</span>
                 </div>
               </div>
 
-              <div className="border-t pt-4 mt-4">
-                <span className="font-semibold text-muted-foreground block mb-2">Transcript / AI Summary</span>
-                <div className="bg-muted p-4 rounded-md text-sm whitespace-pre-wrap">
-                  {selectedCallData.transcript || "No transcript or summary available."}
+              {selectedCallData.recording_url && (
+                <div className="pt-2 border-t">
+                  <span className="text-sm font-medium mb-2 block flex items-center gap-2">
+                    <Play className="h-4 w-4" /> Recording
+                  </span>
+                  <audio controls className="w-full h-10" src={selectedCallData.recording_url} />
+                </div>
+              )}
+
+              <div className="pt-2 border-t">
+                <span className="text-sm font-medium mb-2 block flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" /> Transcript / AI Summary
+                </span>
+                <div className="bg-muted p-3 rounded-md max-h-[200px] overflow-y-auto text-sm whitespace-pre-wrap">
+                  {selectedCallData.transcript ? selectedCallData.transcript : <span className="text-muted-foreground italic">No transcript available for this call.</span>}
                 </div>
               </div>
+
+              <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t mt-4">
+                <Button 
+                  className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => {
+                    setLeadModalCall({
+                      id: selectedCallData.id || "manual",
+                      phone_number: selectedCallData.phone || "",
+                      contact_name: selectedCallData.name || null,
+                      ai_summary: selectedCallData.transcript || null,
+                      status: selectedCallData.status || "completed",
+                      duration_seconds: selectedCallData.duration_seconds || 0,
+                      executed_at: selectedCallData.time || new Date().toISOString(),
+                      recording_url: selectedCallData.recording_url || null,
+                      call_type: "outbound"
+                    });
+                    setDetailsModalOpen(false);
+                  }}
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" /> Mark as Lead
+                </Button>
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => setDetailsModalOpen(false)}>Close</Button>
+              </DialogFooter>
             </div>
           )}
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" size="sm" onClick={() => {
-              setLeadModalCall({
-                id: "manual",
-                phone_number: selectedCallData?.phone || "",
-                contact_name: selectedCallData?.name || null,
-                ai_summary: selectedCallData?.transcript || null,
-                status: selectedCallData?.status || "completed",
-                duration_seconds: 0,
-                executed_at: selectedCallData?.time || new Date().toISOString(),
-                recording_url: null,
-                call_type: "outbound"
-              });
-              setDetailsModalOpen(false);
-            }}>
-              <Users className="h-4 w-4 mr-2" /> Mark as Lead
-            </Button>
-            <Button size="sm" onClick={() => setDetailsModalOpen(false)}>Close</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -981,17 +1016,21 @@ function CampaignStatusBadge({ status }: { status: string }) {
 }
 
 function CallStatusBadge({ status }: { status: string }) {
-  const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
-    completed: { variant: "default", label: "Completed" },
-    answered: { variant: "default", label: "Answered" },
-    busy: { variant: "outline", label: "Busy" },
-    no_answer: { variant: "secondary", label: "No Answer" },
-    failed: { variant: "destructive", label: "Failed" },
-    initiated: { variant: "outline", label: "Initiated" },
-    ringing: { variant: "secondary", label: "Ringing" },
+  const config: Record<string, { label: string; className: string }> = {
+    completed: { label: "Completed", className: "bg-green-50 text-green-600 border-green-200" },
+    answered: { label: "Answered", className: "bg-green-50 text-green-600 border-green-200" },
+    busy: { label: "Busy", className: "text-yellow-600 border-yellow-200 bg-yellow-50" },
+    no_answer: { label: "No Answer", className: "text-muted-foreground" },
+    failed: { label: "Failed", className: "bg-red-50 text-red-600 border-red-200" },
+    initiated: { label: "Initiated", className: "text-blue-500 border-blue-200 bg-blue-50" },
+    ringing: { label: "Ringing", className: "text-blue-500 border-blue-200 bg-blue-50" },
   };
-  const c = config[status] || { variant: "outline" as const, label: status };
-  return <Badge variant={c.variant} className="text-[10px]">{c.label}</Badge>;
+  const c = config[status] || { label: status, className: "text-muted-foreground" };
+  return (
+    <Badge variant="outline" className={cn("uppercase text-[10px]", c.className)}>
+      {c.label}
+    </Badge>
+  );
 }
 
 // formatDuration and parseDurationToSeconds moved to src/utils/duration.ts
@@ -1041,6 +1080,11 @@ function MarkAsLeadModal({
       interest_level: interest[0],
       status: "new" as const,
       notes: notes || null,
+      metadata: {
+        recording_url: call.recording_url,
+        duration: call.duration_seconds,
+        ai_summary: call.ai_summary
+      }
     });
     setSaving(false);
     if (error) {
