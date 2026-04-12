@@ -197,7 +197,7 @@ export default function VoiceTelecallerPage() {
       // 2. Fetch schedules for these lists separately to avoid relationship mapping issues
       const listIds = lists.map((l: any) => l.id);
       const { data: schedules, error: schedError } = await (supabase as any).from("outbound_scheduled_calls")
-        .select("id, list_id, status, scheduled_at, created_at, total_contacts, contacts_called")
+        .select("id, list_id, status, scheduled_at, created_at")
         .in("list_id", listIds);
 
       if (schedError) {
@@ -216,7 +216,7 @@ export default function VoiceTelecallerPage() {
             })[0]
           : null;
 
-        let status = latestSched?.status || 'running';
+        let status = latestSched?.status || 'draft';
         
         // Auto-complete if all contacts are called
         const total = latestSched?.total_contacts || 0;
@@ -916,16 +916,42 @@ function CampaignCard({
   const [isUpdating, setIsUpdating] = useState(false);
 
   async function updateStatus(newStatus: string) {
+    if (!client) return;
     setIsUpdating(true);
     try {
+      // Use upsert to ensure even new campaigns without a schedule record can be activated
       const { error } = await (supabase as any)
         .from("outbound_scheduled_calls")
-        .update({ status: newStatus })
-        .eq("list_id", campaign.id);
+        .upsert({ 
+          list_id: campaign.id, 
+          status: newStatus,
+          owner_user_id: client.user_id,
+          // If we have more info, we'd add it here, but typically n8n picks it up from here
+        }, { onConflict: 'list_id' });
       
       if (error) throw error;
 
-      toast.success(`Campaign ${newStatus === 'running' ? 'resumed' : 'paused'}`);
+      // Mandatory n8n webhook signal to pause/resume the remote dialer service
+      const webhookUrl = (import.meta as any).env.VITE_N8N_OUTBOUND_LIST_IMMEDIATE_CALLS_WEBHOOK;
+      if (webhookUrl) {
+        try {
+          await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              campaign_id: campaign.id,
+              list_id: campaign.id,
+              status: newStatus,
+              action: newStatus === "running" ? "resume" : "pause",
+              client_id: client.id
+            }),
+          });
+        } catch (webhookErr) {
+          console.error("Webhook signal failed:", webhookErr);
+        }
+      }
+
+      toast.success(`Campaign ${newStatus === 'running' ? 'resumed' : 'paused'} successfully`);
       onRefresh();
     } catch (err: any) {
       toast.error(err.message);
@@ -974,14 +1000,13 @@ function CampaignCard({
               <DropdownMenuItem onClick={() => navigate(`/client/voice-telecaller/campaigns/${campaign.id}`)}>
                 <Eye className="h-3 w-3 mr-2" /> View Details
               </DropdownMenuItem>
-              {campaign.status === "running" && (
+              {campaign.status === "running" ? (
                 <DropdownMenuItem onClick={() => updateStatus("paused")}>
-                  <Pause className="h-3 w-3 mr-2" /> Pause Campaign
+                  <Pause className="h-4 w-4 mr-2" /> Pause Campaign
                 </DropdownMenuItem>
-              )}
-              {campaign.status === "paused" && (
+              ) : (
                 <DropdownMenuItem onClick={() => updateStatus("running")}>
-                  <Play className="h-3 w-3 mr-2" /> Resume Campaign
+                  <Play className="h-4 w-4 mr-2" /> {campaign.status === 'draft' ? 'Start' : 'Resume'} Campaign
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => navigate(`/client/voice-telecaller/calls?campaign=${campaign.id}`)}>
