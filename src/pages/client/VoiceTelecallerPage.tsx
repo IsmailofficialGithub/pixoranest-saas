@@ -913,23 +913,41 @@ function CampaignCard({
   navigate: (path: string) => void;
   onRefresh: () => void;
 }) {
+  const { client } = useClient();
   const [isUpdating, setIsUpdating] = useState(false);
 
   async function updateStatus(newStatus: string) {
     if (!client) return;
     setIsUpdating(true);
     try {
-      // Use upsert to ensure even new campaigns without a schedule record can be activated
-      const { error } = await (supabase as any)
+      // Search for any existing schedule for this list
+      const { data: existing } = await (supabase as any)
         .from("outbound_scheduled_calls")
-        .upsert({ 
-          list_id: campaign.id, 
-          status: newStatus,
-          owner_user_id: client.user_id,
-          // If we have more info, we'd add it here, but typically n8n picks it up from here
-        }, { onConflict: 'list_id' });
-      
-      if (error) throw error;
+        .select("id")
+        .eq("list_id", campaign.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        // Update the most recent schedule
+        const { error } = await (supabase as any)
+          .from("outbound_scheduled_calls")
+          .update({ status: newStatus })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        // Only insert if it doesn't exist – typically only for starting a fresh campaign
+        const { error } = await (supabase as any)
+          .from("outbound_scheduled_calls")
+          .insert({ 
+            list_id: campaign.id, 
+            status: newStatus,
+            owner_user_id: client.user_id,
+            scheduled_at: new Date().toISOString()
+          });
+        if (error) throw error;
+      }
 
       // Mandatory n8n webhook signal to pause/resume the remote dialer service
       const webhookUrl = (import.meta as any).env.VITE_N8N_OUTBOUND_LIST_IMMEDIATE_CALLS_WEBHOOK;
