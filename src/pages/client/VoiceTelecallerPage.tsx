@@ -83,6 +83,9 @@ export default function VoiceTelecallerPage() {
   const [instantCallName, setInstantCallName] = useState("");
   const [isCalling, setIsCalling] = useState(false);
   const [hasBot, setHasBot] = useState<boolean>(true); // assume true until checked
+  const [recordingPlayerOpen, setRecordingPlayerOpen] = useState(false);
+  const [activeRecordingUrl, setActiveRecordingUrl] = useState<string>("");
+  const [activeRecordingName, setActiveRecordingName] = useState<string>("");
 
   const [selectedCallData, setSelectedCallData] = useState<{
     id?: string;
@@ -493,7 +496,22 @@ export default function VoiceTelecallerPage() {
                           <TableCell className="text-xs text-muted-foreground">
                             {format(new Date(lead.created_at), "dd MMM yyyy, hh:mm a")}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right flex items-center justify-end gap-1">
+                            {lead.recording_url && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10" 
+                                title="Play Recording"
+                                onClick={() => {
+                                  setActiveRecordingUrl(lead.recording_url);
+                                  setActiveRecordingName(lead.name || lead.phone);
+                                  setRecordingPlayerOpen(true);
+                                }}
+                              >
+                                <Play className="h-4 w-4 fill-current" />
+                              </Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="View Details" onClick={() => {
                               setSelectedCallData({
                                 id: lead.id,
@@ -559,7 +577,22 @@ export default function VoiceTelecallerPage() {
                           <TableCell className="text-xs text-muted-foreground">
                             {format(new Date(call.executed_at), "dd MMM yyyy, hh:mm a")}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right flex items-center justify-end gap-1">
+                            {call.recording_url && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10" 
+                                title="Play Recording"
+                                onClick={() => {
+                                  setActiveRecordingUrl(call.recording_url!);
+                                  setActiveRecordingName(call.contact_name || call.phone_number);
+                                  setRecordingPlayerOpen(true);
+                                }}
+                              >
+                                <Play className="h-4 w-4 fill-current" />
+                              </Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-primary" title="View Details" onClick={() => {
                               setSelectedCallData({
                                 id: call.id,
@@ -673,7 +706,22 @@ export default function VoiceTelecallerPage() {
                           <TableCell className="text-xs text-muted-foreground">
                             {format(new Date(call.executed_at), "dd MMM yyyy, hh:mm a")}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-right flex items-center justify-end gap-1">
+                            {call.recording_url && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10" 
+                                title="Play Recording"
+                                onClick={() => {
+                                  setActiveRecordingUrl(call.recording_url!);
+                                  setActiveRecordingName(call.contact_name || call.phone_number);
+                                  setRecordingPlayerOpen(true);
+                                }}
+                              >
+                                <Play className="h-4 w-4 fill-current" />
+                              </Button>
+                            )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -682,7 +730,11 @@ export default function VoiceTelecallerPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 {call.recording_url && (
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => {
+                                    setActiveRecordingUrl(call.recording_url!);
+                                    setActiveRecordingName(call.contact_name || call.phone_number);
+                                    setRecordingPlayerOpen(true);
+                                  }}>
                                     <Play className="h-3 w-3 mr-2" /> Play Recording
                                   </DropdownMenuItem>
                                 )}
@@ -727,6 +779,20 @@ export default function VoiceTelecallerPage() {
                       </div>
                       {call.ai_summary && (
                         <p className="text-xs text-muted-foreground line-clamp-2">{call.ai_summary}</p>
+                      )}
+                      {call.recording_url && (
+                        <Button 
+                          variant="secondary" 
+                          size="sm" 
+                          className="w-full text-xs h-8" 
+                          onClick={() => {
+                            setActiveRecordingUrl(call.recording_url!);
+                            setActiveRecordingName(call.contact_name || call.phone_number);
+                            setRecordingPlayerOpen(true);
+                          }}
+                        >
+                          <Play className="h-3 w-3 mr-2 fill-current" /> Play Recording
+                        </Button>
                       )}
                     </div>
                   ))}
@@ -849,6 +915,39 @@ export default function VoiceTelecallerPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Recording Player Modal */}
+      <Dialog open={recordingPlayerOpen} onOpenChange={setRecordingPlayerOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Play className="h-5 w-5 text-primary fill-primary/10" />
+              Call Recording
+            </DialogTitle>
+            <DialogDescription>
+              Listening to call with {activeRecordingName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-6 flex flex-col items-center justify-center space-y-6">
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center animate-pulse">
+              <Phone className="h-10 w-10 text-primary" />
+            </div>
+            <audio 
+              controls 
+              autoPlay 
+              className="w-full h-12 focus:outline-none" 
+              src={activeRecordingUrl}
+            >
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecordingPlayerOpen(false)} className="w-full">
+              Close Player
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
