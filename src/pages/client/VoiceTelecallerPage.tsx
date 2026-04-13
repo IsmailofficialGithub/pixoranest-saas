@@ -184,9 +184,9 @@ export default function VoiceTelecallerPage() {
     if (!client) return;
     
     try {
-      // 1. Fetch lists
+      // 1. Fetch lists (wildcard select to be safe against schema changes)
       const { data: lists, error: listError } = await (supabase as any).from("outbound_contact_lists")
-        .select(`id, name, description, created_at`)
+        .select(`*`)
         .eq("owner_user_id", client.user_id)
         .order("created_at", { ascending: false });
 
@@ -197,10 +197,10 @@ export default function VoiceTelecallerPage() {
         return;
       }
 
-      // 2. Fetch schedules for these lists separately to avoid relationship mapping issues
+      // 2. Fetch schedules separately
       const listIds = lists.map((l: any) => l.id);
       const { data: schedules, error: schedError } = await (supabase as any).from("outbound_scheduled_calls")
-        .select("id, list_id, status, scheduled_at, created_at")
+        .select("*")
         .in("list_id", listIds);
 
       if (schedError) {
@@ -210,7 +210,7 @@ export default function VoiceTelecallerPage() {
       const mapped = lists.map((d: any) => {
         const listSchedules = schedules?.filter((s: any) => s.list_id === d.id) || [];
         
-        // Get newest schedule by created_at or id
+        // Get newest schedule
         const latestSched = listSchedules.length > 0 
           ? [...listSchedules].sort((a: any, b: any) => {
               const dateA = new Date(a.created_at || a.scheduled_at || 0).getTime();
@@ -221,9 +221,10 @@ export default function VoiceTelecallerPage() {
 
         let status = latestSched?.status || 'draft';
         
-        // Auto-complete if all contacts are called
-        const total = latestSched?.total_contacts || 0;
+        // Use available count fields from list data safely
+        const total = d.contact_count || d.total_contacts || 0;
         const called = latestSched?.contacts_called || 0;
+        
         if (status === 'running' && total > 0 && called >= total) {
           status = 'completed';
         }
@@ -234,7 +235,9 @@ export default function VoiceTelecallerPage() {
           status: status,
           created_at: d.created_at,
           scheduled_at: latestSched?.scheduled_at || null,
-          list_id: d.id
+          list_id: d.id,
+          total_contacts: total,
+          contacts_called: called
         };
       });
       setCampaigns(mapped);

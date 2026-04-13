@@ -285,24 +285,6 @@ export default function CampaignDetailPage() {
         .eq("campaign_id", campaignId)
         .order("executed_at", { ascending: false });
       logsData = data || [];
-
-      const { data: leadsData } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("campaign_id", campaignId);
-
-      // Enrich leads with recording info from call logs
-      const enrichedLeads = (leadsData || []).map(lead => {
-        const matchingLog = (logsData || []).find(log => log.phone === lead.phone);
-        return {
-          ...lead,
-          recording_url: (matchingLog as any)?.call_url || null,
-          duration_seconds: (matchingLog as any)?.duration_seconds || 0,
-          transcript: lead.notes || (matchingLog as any)?.transcript || null,
-          status: lead.status || 'qualified'
-        };
-      });
-      setLeads(enrichedLeads as any[]);
     } else {
       // Telecaller: check both scheduled_call_id and list_id
       const { data } = await (supabase as any)
@@ -340,29 +322,86 @@ export default function CampaignDetailPage() {
         isLead: false,
       }));
     setActivity(recentContacts);
-  }, [campaignId, client]);
+  }, [campaignId, client, campaign]);
 
   // Fetch leads
   const fetchLeads = useCallback(async () => {
-    if (!campaignId || !client) return;
+    if (!campaignId || !client || !campaign) return;
     
-    // Try both naming conventions in metadata and direct column
-    const { data } = await supabase
+    let allLeads: any[] = [];
+
+    // 1. Fetch from standard 'leads' table
+    const { data: standardLeads } = await supabase
       .from("leads")
       .select("*")
       .eq("client_id", client.id)
       .or(`campaign_id.eq.${campaignId},metadata->>campaign_id.eq.${campaignId},metadata->>list_id.eq.${campaignId}`);
     
-    setLeads((data || []) as Lead[]);
-  }, [campaignId, client]);
+    if (standardLeads) {
+      allLeads = [...standardLeads];
+    }
+
+    // 2. Fetch from 'outbound_leads' table for Telecaller
+    if (campaign.source !== "voice") {
+       // Approach: if we have call logs, we can match them. 
+       // Often outbound_leads are created without a direct list_id but linked to call_log_id
+       const { data: outboundLeads } = await (supabase as any)
+         .from("outbound_leads")
+         .select("*")
+         .eq("owner_user_id", client.user_id);
+       
+       if (outboundLeads && callLogs.length > 0) {
+         const campaignCallLogIds = new Set(callLogs.map(l => l.id));
+         const relevantOutbound = outboundLeads.filter((ol: any) => campaignCallLogIds.has(ol.call_log_id));
+         
+         const mappedOutbound = relevantOutbound.map((ol: any) => {
+           const log = callLogs.find(l => l.id === ol.call_log_id);
+           return {
+             id: ol.id,
+             name: log?.contact_name || ol.name || ol.phone || "Lead",
+             phone: log?.phone_number || ol.phone,
+             email: ol.email || null,
+             company: ol.company || null,
+             status: ol.status || "qualified",
+             lead_score: ol.lead_score || null,
+             interest_level: ol.interest_level || null,
+             created_at: ol.created_at,
+             notes: ol.notes,
+             recording_url: log?.recording_url,
+             duration_seconds: log?.duration_seconds,
+             transcript: ol.notes || log?.transcript
+           };
+         });
+         
+         allLeads = [...allLeads, ...mappedOutbound];
+       }
+    } else {
+       // For voice source, we already enriched in previous versions but let's keep it simple here
+       // as standard 'leads' should cover it if campaign_id is set.
+    }
+    
+    // Simple de-duplication by phone if needed, or by id
+    const uniqueLeads = allLeads.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+    setLeads(uniqueLeads);
+  }, [campaignId, client, campaign, callLogs]);
 
   useEffect(() => {
     if (client && campaignId) {
       fetchCampaign();
+    }
+  }, [client, campaignId, fetchCampaign]);
+
+  useEffect(() => {
+    if (campaign) {
       fetchCallLogs();
+    }
+  }, [campaign, fetchCallLogs]);
+
+  useEffect(() => {
+    if (campaign) {
       fetchLeads();
     }
-  }, [client, campaignId, fetchCampaign, fetchCallLogs, fetchLeads]);
+  }, [campaign, callLogs, fetchLeads]);
 
   // Realtime subscription
   useEffect(() => {

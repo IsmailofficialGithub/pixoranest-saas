@@ -340,11 +340,24 @@ export default function CreateCampaignWizard({
           .insert(batch);
         if (contactErr) throw contactErr;
       }
-      setLaunchStep(4);
+      setLaunchStep(3);
 
       const schedAt = data.scheduleType === "later" && data.scheduledAt
         ? new Date(data.scheduledAt).toISOString()
         : new Date().toISOString();
+
+      // Step 3: Create Schedule/Run record so it appears in UI
+      const { error: schedError } = await (supabase as any)
+        .from("outbound_scheduled_calls")
+        .insert({
+          list_id: list.id,
+          owner_user_id: userId,
+          status: data.scheduleType === "later" ? "scheduled" : "running",
+          scheduled_at: schedAt
+        });
+
+      if (schedError) throw schedError;
+      setLaunchStep(4);
 
       // Trigger workflow (best-effort)
       try {
