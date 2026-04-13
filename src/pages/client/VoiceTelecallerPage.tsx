@@ -707,21 +707,6 @@ export default function VoiceTelecallerPage() {
                             {format(new Date(call.executed_at), "dd MMM yyyy, hh:mm a")}
                           </TableCell>
                           <TableCell className="text-right flex items-center justify-end gap-1">
-                            {call.recording_url && (
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10" 
-                                title="Play Recording"
-                                onClick={() => {
-                                  setActiveRecordingUrl(call.recording_url!);
-                                  setActiveRecordingName(call.contact_name || call.phone_number);
-                                  setRecordingPlayerOpen(true);
-                                }}
-                              >
-                                <Play className="h-4 w-4 fill-current" />
-                              </Button>
-                            )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
