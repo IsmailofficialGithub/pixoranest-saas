@@ -38,14 +38,17 @@ import {
   MessageCircle, CheckCircle, CheckCheck, Zap, MessageSquare,
   Users, FileText, BarChart3, MoreVertical, Plus, Send,
   Clock, X, ArrowRight, Upload, Eye, RefreshCw, Trash2,
-  Copy, Pause, Play, Video, Headset, AlertCircle
+  Copy, Pause, Play, Video, Headset, AlertCircle, Phone
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { formatDistanceToNow, format, startOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import Papa from "papaparse";
+import { motion } from "framer-motion";
+import WhatsAppInbox from "@/components/client/whatsapp/WhatsAppInbox";
 
 /* ─── Types ─── */
 interface WACampaign {
@@ -326,6 +329,8 @@ export default function WhatsAppPage() {
     return () => { supabase.removeChannel(channel); };
   }, [client, fetchCampaigns, fetchStats]);
 
+  const [mainTab, setMainTab] = useState("overview");
+
   if (contextLoading || isLoading) return <LoadingSkeleton />;
   if (!waService) return <Navigate to="/client" replace />;
 
@@ -334,19 +339,38 @@ export default function WhatsAppPage() {
     : campaigns.filter(c => c.status === campaignTab);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <MessageCircle className="h-6 w-6" style={{ color: "#25D366" }} />
-            <h1 className="text-xl md:text-2xl font-bold text-foreground">LeadNest</h1>
+    <div className="space-y-4">
+      <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
+          <div>
+            <div className="flex items-center gap-2">
+              <MessageCircle className="h-6 w-6" style={{ color: "#25D366" }} />
+              <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight">LeadNest</h1>
+            </div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">WhatsApp Automation</p>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">Send bulk messages and automate conversations</p>
+
+          <TabsList className="flex bg-muted/20 p-1 h-11 w-full md:w-auto min-w-[300px]">
+            <TabsTrigger value="overview" className="flex-1 px-4 rounded-md transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs">
+              <BarChart3 className="h-3.5 w-3.5 mr-2" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="inbox" className="flex-1 px-4 rounded-md transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs">
+              <MessageSquare className="h-3.5 w-3.5 mr-2" />
+              Inbox
+            </TabsTrigger>
+            <TabsTrigger value="template" className="flex-1 px-4 rounded-md transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs">
+              <FileText className="h-3.5 w-3.5 mr-2" />
+              Template
+            </TabsTrigger>
+          </TabsList>
         </div>
+
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {assignedBots.length > 1 && (
             <Select value={selectedAppId || ""} onValueChange={setSelectedAppId}>
-              <SelectTrigger className="w-[180px] h-9 bg-background border-muted-foreground/20">
+              <SelectTrigger className="w-[160px] h-9 bg-background border-muted-foreground/20 text-xs">
                 <SelectValue placeholder="Select Bot" />
               </SelectTrigger>
               <SelectContent>
@@ -356,24 +380,26 @@ export default function WhatsAppPage() {
               </SelectContent>
             </Select>
           )}
-          <Badge variant="outline" className="text-xs py-1 px-3">
-            {Math.max(stats?.total || 0, waService?.usage_consumed || 0)} / {waService?.usage_limit || 0} messages used
+          <Badge variant="outline" className="text-[10px] py-1 px-3 bg-background/50">
+            {Math.max(stats?.total || 0, waService?.usage_consumed || 0)} / {waService?.usage_limit || 0}
           </Badge>
           <Button 
             variant="outline" 
             size="sm" 
+            className="h-9 px-3 text-xs"
             onClick={() => setCampaignWizardOpen(true)}
             disabled={assignedBots.length === 0}
           >
-            <Plus className="h-4 w-4 mr-1" /> Campaign
+            <Plus className="h-3.5 w-3.5 mr-1" /> Campaign
           </Button>
           <Button 
             size="sm" 
+            className="h-9 px-3 text-xs shadow-lg shadow-green-500/20"
             style={{ backgroundColor: assignedBots.length === 0 ? "#a3a3a3" : "#25D366", color: "white" }} 
             onClick={() => setSendModalOpen(true)}
             disabled={assignedBots.length === 0}
           >
-            <Send className="h-4 w-4 mr-1" /> Send Message
+            <Send className="h-3.5 w-3.5 mr-1" /> Message
           </Button>
         </div>
       </div>
@@ -383,160 +409,241 @@ export default function WhatsAppPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>No WhatsApp Bot Connected</AlertTitle>
           <AlertDescription>
-            You don't have any WhatsApp bots assigned to your account. Please contact your administrator to connect a bot before you can send messages or start campaigns.
+            Direct communication services are currently unavailable. Contact admin for bot assignment.
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <StatsCard icon={<MessageCircle className="h-5 w-5" />} color="#25D366" label="Messages Sent" value={stats?.messagesSent ?? 0} subtext="This month" />
-        <StatsCard icon={<CheckCircle className="h-5 w-5" />} color="#22c55e" label="Delivery Rate" value={`${stats?.deliveryRate ?? 0}%`} subtext={`${stats?.delivered ?? 0} of ${stats?.total ?? 0}`} />
-        <StatsCard icon={<CheckCheck className="h-5 w-5" />} color="#3b82f6" label="Read Rate" value={`${stats?.readRate ?? 0}%`} subtext="Recipients opened" />
-        <StatsCard icon={<Zap className="h-5 w-5" />} color="#f59e0b" label="Active Campaigns" value={stats?.activeCampaigns ?? 0} subtext="Running now" />
-      </div>
+        <TabsContent value="overview" className="space-y-8 mt-0 border-none p-0 outline-none">
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+            <StatsCard icon={<MessageCircle className="h-5 w-5" />} color="#25D366" label="Messages Sent" value={stats?.messagesSent ?? 0} subtext="This month" />
+            <StatsCard icon={<CheckCircle className="h-5 w-5" />} color="#22c55e" label="Delivery Rate" value={`${stats?.deliveryRate ?? 0}%`} subtext={`${stats?.delivered ?? 0} of ${stats?.total ?? 0}`} />
+            <StatsCard icon={<CheckCheck className="h-5 w-5" />} color="#3b82f6" label="Read Rate" value={`${stats?.readRate ?? 0}%`} subtext="Recipients opened" />
+            <StatsCard icon={<Zap className="h-5 w-5" />} color="#f59e0b" label="Active Campaigns" value={stats?.activeCampaigns ?? 0} subtext="Running now" />
+          </div>
 
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <QuickAction 
-          icon={<MessageSquare className="h-5 w-5" />} 
-          label="Send Single Message" 
-          sub="Send to one contact" 
-          onClick={() => setSendModalOpen(true)} 
-          disabled={assignedBots.length === 0}
-        />
-        <QuickAction 
-          icon={<Users className="h-5 w-5" />} 
-          label="Bulk Campaign" 
-          sub="Send to multiple contacts" 
-          onClick={() => setCampaignWizardOpen(true)} 
-          disabled={assignedBots.length === 0}
-        />
-        <QuickAction icon={<FileText className="h-5 w-5" />} label="Message Templates" sub="Pre-approved templates" onClick={() => document.getElementById("wa-templates")?.scrollIntoView({ behavior: "smooth" })} />
-        <QuickAction icon={<BarChart3 className="h-5 w-5" />} label="Analytics" sub="Message performance" onClick={() => document.getElementById("wa-analytics")?.scrollIntoView({ behavior: "smooth" })} />
-      </div>
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+            <QuickAction 
+              icon={<MessageSquare className="h-5 w-5" />} 
+              label="Send Single Message" 
+              sub="Send to one contact" 
+              onClick={() => setSendModalOpen(true)} 
+              disabled={assignedBots.length === 0}
+            />
+            <QuickAction 
+              icon={<Users className="h-5 w-5" />} 
+              label="Bulk Campaign" 
+              sub="Send to multiple contacts" 
+              onClick={() => setCampaignWizardOpen(true)} 
+              disabled={assignedBots.length === 0}
+            />
+            <QuickAction icon={<FileText className="h-5 w-5" />} label="Message Templates" sub="Pre-approved templates" onClick={() => setMainTab("template")} />
+            <QuickAction icon={<MessageSquare className="h-5 w-5" />} label="Live Chat Inbox" sub="Real-time messaging" onClick={() => setMainTab("inbox")} />
+          </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-foreground">My Campaigns</h2>
-        </div>
-        <Tabs value={campaignTab} onValueChange={setCampaignTab}>
-          <TabsList className="mb-3">
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="sending">Sending</TabsTrigger>
-            <TabsTrigger value="completed">Completed</TabsTrigger>
-            <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
-            <TabsTrigger value="draft">Draft</TabsTrigger>
-          </TabsList>
-          <TabsContent value={campaignTab}>
-            {filteredCampaigns.length > 0 ? (
-              <div className="space-y-3">
-                {filteredCampaigns.map(c => <CampaignCard key={c.id} campaign={c} onRefresh={fetchCampaigns} />)}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-foreground tracking-tight">Campaign Operations</h2>
+            </div>
+            <Tabs value={campaignTab} onValueChange={setCampaignTab}>
+              <TabsList className="mb-4 bg-muted/20">
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="sending">Sending</TabsTrigger>
+                <TabsTrigger value="completed">Completed</TabsTrigger>
+                <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
+                <TabsTrigger value="draft">Draft</TabsTrigger>
+              </TabsList>
+              <TabsContent value={campaignTab}>
+                {filteredCampaigns.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredCampaigns.map(c => <CampaignCard key={c.id} campaign={c} onRefresh={fetchCampaigns} />)}
+                  </div>
+                ) : (
+                  <Card className="border-dashed"><CardContent className="py-12 text-center text-muted-foreground"><p className="text-sm">No {campaignTab} campaigns found in your archives.</p></CardContent></Card>
+                )}
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <Card className="shadow-sm border-muted/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-lg font-bold">Transmission History</CardTitle>
+              <Button variant="ghost" size="sm" className="text-xs hover:bg-muted" onClick={fetchRecentMessages}>
+                <RefreshCw className="h-3 w-3 mr-1" /> Refresh
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {recentMessages.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[140px]">Phone</TableHead>
+                      <TableHead>Message Content</TableHead>
+                      <TableHead className="w-[100px]">Status</TableHead>
+                      <TableHead className="w-[140px]">Timestamp</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recentMessages.map(m => (
+                      <TableRow key={m.id} className="group transition-colors hover:bg-muted/30">
+                        <TableCell className="font-mono text-sm font-medium">{m.phone_number}</TableCell>
+                        <TableCell className="max-w-[300px] truncate text-xs">{m.message_content}</TableCell>
+                        <TableCell><MessageStatusBadge status={m.status} /></TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{m.sent_at ? format(new Date(m.sent_at), "dd MMM, HH:mm") : "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-12 border-2 border-dashed rounded-xl"><p className="text-sm text-muted-foreground">The transmission stream is currently empty</p></div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div id="wa-analytics" className="grid gap-6 lg:grid-cols-2">
+            <Card className="shadow-sm border-muted/20">
+              <CardHeader><CardTitle className="text-base font-bold">Metric Trends</CardTitle></CardHeader>
+              <CardContent>
+                {analyticsData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={analyticsData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                      <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                      />
+                      <Line type="monotone" dataKey="sent" stroke="#25D366" strokeWidth={3} dot={{ r: 4, fill: '#25D366' }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-center py-16 text-muted-foreground text-sm italic">Analytics engine awaiting data streams...</p>}
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm border-muted/20">
+              <CardHeader><CardTitle className="text-base font-bold">Status Allocation</CardTitle></CardHeader>
+              <CardContent>
+                {statusDistribution.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie data={statusDistribution} dataKey="value" innerRadius={80} outerRadius={110} paddingAngle={5}>
+                        {statusDistribution.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip />
+                      <Legend verticalAlign="bottom" height={36}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-center py-16 text-muted-foreground text-sm italic">Status distribution mapping pending...</p>}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="inbox" className="mt-0 border-none p-0 outline-none">
+          <WhatsAppInbox />
+        </TabsContent>
+
+        <TabsContent value="template" className="mt-0 border-none p-0 outline-none space-y-6">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-2xl font-bold tracking-tight">Whatsapp Templates</h2>
+            <p className="text-sm text-muted-foreground">Manage your Whatsapp templates</p>
+          </div>
+
+          <div className="bg-card/50 border border-border rounded-xl p-4 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Phone className="h-5 w-5 text-primary" />
               </div>
-            ) : (
-              <Card><CardContent className="py-10 text-center"><p className="text-sm text-muted-foreground">No {campaignTab} campaigns.</p></CardContent></Card>
-            )}
-          </TabsContent>
-        </Tabs>
-      </div>
+              <span className="font-bold text-lg">{assignedBots.length} Phone Numbers</span>
+            </div>
+            <Button variant="outline" size="sm" className="bg-background hover:bg-muted font-bold text-xs h-9">
+              <RefreshCw className="h-3.5 w-3.5 mr-2" />
+              Sync Numbers
+            </Button>
+          </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-lg">Recent Messages</CardTitle>
-          <Button variant="ghost" size="sm" className="text-xs" onClick={fetchRecentMessages}>
-            <RefreshCw className="h-3 w-3 mr-1" /> Refresh
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {recentMessages.length > 0 ? (
+          <Card className="border-border/50 shadow-xl overflow-hidden rounded-2xl bg-card">
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Message</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Sent</TableHead>
+              <TableHeader className="bg-muted/30">
+                <TableRow className="hover:bg-transparent border-none">
+                  <TableHead className="py-5 font-bold text-xs text-muted-foreground uppercase tracking-widest">Verified Name</TableHead>
+                  <TableHead className="py-5 font-bold text-xs text-muted-foreground uppercase tracking-widest">Business App</TableHead>
+                  <TableHead className="py-5 font-bold text-xs text-muted-foreground uppercase tracking-widest">Phone Number</TableHead>
+                  <TableHead className="py-5 font-bold text-xs text-muted-foreground uppercase tracking-widest"># Phone Number ID</TableHead>
+                  <TableHead className="py-5 font-bold text-xs text-muted-foreground uppercase tracking-widest">Waba ID</TableHead>
+                  <TableHead className="py-5 font-bold text-xs text-muted-foreground uppercase tracking-widest">Quality</TableHead>
+                  <TableHead className="py-5 font-bold text-xs text-muted-foreground uppercase tracking-widest">Throughput</TableHead>
+                  <TableHead className="py-5 text-right"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentMessages.map(m => (
-                  <TableRow key={m.id}>
-                    <TableCell className="font-mono text-sm">{m.phone_number}</TableCell>
-                    <TableCell className="max-w-[200px] truncate text-xs">{m.message_content}</TableCell>
-                    <TableCell><MessageStatusBadge status={m.status} /></TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{m.sent_at ? formatDistanceToNow(new Date(m.sent_at), { addSuffix: true }) : "—"}</TableCell>
+                {assignedBots.length > 0 ? assignedBots.map((bot) => (
+                  <TableRow key={bot.id} className="border-border/30 hover:bg-muted/10 transition-colors">
+                    <TableCell className="py-6 font-black text-primary">{bot.name || "Unnamed Bot"}</TableCell>
+                    <TableCell>
+                      <Badge className={cn(
+                        "rounded-md py-1 px-3",
+                        bot.provider_type === 'api' 
+                          ? "bg-green-500/10 text-green-500 hover:bg-green-500/20 border-green-500/20" 
+                          : "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border-blue-500/20"
+                      )}>
+                        {bot.provider_type === 'api' ? <Zap className="h-3 w-3 mr-1.5 fill-current" /> : <MessageSquare className="h-3 w-3 mr-1.5 fill-current" />}
+                        {bot.provider_type === 'api' ? "Cloud API" : "Coexisting"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm font-bold text-slate-300">{bot.phone_number || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs text-slate-500">{bot.phone_number_id || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs text-slate-500">{bot.waba_id || "—"}</TableCell>
+                    <TableCell>
+                      <Badge className="bg-green-500 text-white font-bold text-[10px] py-0.5 px-3">GREEN</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="bg-orange-500 text-white font-bold text-[10px] py-0.5 px-3">STANDARD</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-8 text-[10px] font-black border-none bg-muted/50 hover:bg-primary hover:text-white transition-all"
+                          onClick={() => {
+                            setSelectedAppId(bot.id);
+                            setTemplateModalOpen(true);
+                          }}
+                        >
+                          + Create
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-8 text-[10px] font-black border-none bg-muted/50 hover:bg-primary hover:text-white transition-all"
+                          onClick={() => {
+                            setSelectedAppId(bot.id);
+                            setMainTab("template"); // Logic to slide to templates if we had a detail view
+                          }}
+                        >
+                          <Eye className="h-3 w-3 mr-1" /> View
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                ))}
+                )) : (
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-20 text-center">
+                      <div className="flex flex-col items-center gap-2 opacity-20">
+                        <Phone className="h-12 w-12" />
+                        <p className="font-bold">No WhatsApp applications found</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
-          ) : (
-            <div className="text-center py-10"><p className="text-sm text-muted-foreground">No messages sent yet</p></div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card id="wa-templates">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Message Templates</CardTitle>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setTemplateModalOpen(true)}><Plus className="h-4 w-4 mr-1" /> Create</Button>
-            <Button variant="outline" size="sm" onClick={() => selectedAppId && fetchTemplates(selectedAppId)} disabled={isRefreshingTemplates}>
-              <RefreshCw className={`h-4 w-4 mr-1 ${isRefreshingTemplates ? "animate-spin" : ""}`} /> Sync
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {templates.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {templates.map((tpl: any, i) => (
-                <div key={i} className="border rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Badge variant="outline" className="text-[10px]">{tpl.category}</Badge>
-                    <Badge className="text-[10px] bg-green-100 text-green-700">{tpl.status}</Badge>
-                  </div>
-                  <h4 className="font-semibold text-sm">{tpl.name}</h4>
-                  <p className="text-xs text-muted-foreground line-clamp-3">{tpl.components?.find((c: any) => c.type === 'BODY')?.text || tpl.body}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-10 text-muted-foreground">No templates found. Sync to fetch from WhatsApp.</div>
-          )}
-        </CardContent>
-      </Card>
-
-      <div id="wa-analytics" className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Messages Over Time</CardTitle></CardHeader>
-          <CardContent>
-            {analyticsData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={analyticsData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="day" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="sent" stroke="#25D366" />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : <p className="text-center py-10 text-muted-foreground">No analytics data</p>}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Delivery Distribution</CardTitle></CardHeader>
-          <CardContent>
-            {statusDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie data={statusDistribution} dataKey="value" innerRadius={60} outerRadius={80}>
-                    {statusDistribution.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <p className="text-center py-10 text-muted-foreground">No distribution data</p>}
-          </CardContent>
-        </Card>
-      </div>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <SendMessageModal 
         open={sendModalOpen} 
@@ -583,18 +690,24 @@ export default function WhatsAppPage() {
 
 function StatsCard({ icon, color, label, value, subtext }: { icon: React.ReactNode; color: string; label: string; value: string | number; subtext: string }) {
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg p-2.5" style={{ backgroundColor: `${color}15` }}>
-            <div style={{ color }}>{icon}</div>
+    <Card className="overflow-hidden border-border/50 bg-card/30 backdrop-blur-sm group hover:border-primary/50 transition-all duration-300">
+      <CardContent className="p-0">
+        <div className="p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="rounded-xl p-2.5 transition-colors group-hover:bg-primary/20" style={{ backgroundColor: `${color}15` }}>
+              <div style={{ color }}>{icon}</div>
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">{label}</p>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-xl font-bold">{value}</p>
-            <p className="text-[10px] text-muted-foreground">{subtext}</p>
+          <div className="space-y-0.5">
+            <p className="text-2xl font-black text-foreground">{value}</p>
+            <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }}></span>
+              {subtext}
+            </p>
           </div>
         </div>
+        <div className="h-1 w-full opacity-10 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: color }}></div>
       </CardContent>
     </Card>
   );
@@ -603,16 +716,24 @@ function StatsCard({ icon, color, label, value, subtext }: { icon: React.ReactNo
 function QuickAction({ icon, label, sub, onClick, disabled }: { icon: React.ReactNode; label: string; sub: string; onClick: () => void; disabled?: boolean }) {
   return (
     <Card 
-      className={`cursor-pointer transition-colors ${disabled ? 'opacity-50 cursor-not-allowed grayscale-[0.5]' : 'hover:bg-muted/50'}`} 
+      className={cn(
+        "cursor-pointer transition-all duration-300 border-border/50 bg-card/20 hover:bg-primary/5 hover:border-primary/30 group relative overflow-hidden",
+        disabled && "opacity-50 cursor-not-allowed grayscale-[0.5]"
+      )} 
       onClick={() => !disabled && onClick()}
     >
-      <CardContent className="pt-5 pb-4 flex items-start gap-3">
-        <div className="rounded-lg bg-muted p-2">{icon}</div>
-        <div>
-          <p className="text-sm font-medium">{label}</p>
-          <p className="text-xs text-muted-foreground">{sub}</p>
+      <CardContent className="pt-6 pb-5 flex flex-col gap-4">
+        <div className="rounded-xl bg-muted p-2.5 w-fit group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+          {icon}
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-black tracking-tight">{label}</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{sub}</p>
         </div>
       </CardContent>
+      <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        <ArrowRight className="h-4 w-4 text-primary" />
+      </div>
     </Card>
   );
 }
