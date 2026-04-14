@@ -185,14 +185,22 @@ export default function CampaignDetailPage() {
 
         const latestSched = scheds?.[0];
 
+        let status = latestSched?.status || "draft";
+        const total = actualTotal || listData.contact_count || 0;
+        const called = actualCalled || 0;
+
+        if (status === 'running' && total > 0 && called >= total) {
+          status = 'completed';
+        }
+
         setCampaign({
           id: listData.id,
           campaign_name: listData.name || "Campaign",
           campaign_type: "Telecaller",
-          status: latestSched?.status || "draft",
+          status: status,
           script: listData.description,
-          total_contacts: actualTotal || listData.contact_count || 0,
-          contacts_called: actualCalled || 0,
+          total_contacts: total,
+          contacts_called: called,
           contacts_answered: actualAnswered || 0,
           scheduled_at: latestSched?.scheduled_at || null,
           started_at: listData.created_at,
@@ -418,10 +426,26 @@ export default function CampaignDetailPage() {
       .on("postgres_changes", {
         event: "*",
         schema: "public",
+        table: "outbound_scheduled_calls",
+        filter: `list_id=eq.${campaignId}`,
+      }, () => fetchCampaign())
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "outbound_call_logs",
+        filter: `list_id=eq.${campaignId}`,
+      }, () => {
+        fetchCallLogs();
+        fetchCampaign(); // To update progress counts
+      })
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
         table: "outbound_call_logs",
         filter: `scheduled_call_id=eq.${campaignId}`,
       }, () => {
         fetchCallLogs();
+        fetchCampaign();
       })
       .on("postgres_changes", {
         event: "INSERT",

@@ -103,36 +103,7 @@ export default function VoiceTelecallerPage() {
   // Check access
   const telecallerService = assignedServices.find(s => s.service_slug === "voice-telecaller" || s.service_slug === "ai-voice-telecaller");
 
-  useEffect(() => {
-    if (!client) return;
-    fetchAllData();
-  }, [client]);
-
-  // Realtime subscription for campaigns
-  useEffect(() => {
-    if (!client) return;
-    const channel = supabase
-      .channel("telecaller-campaigns")
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "outbound_contact_lists",
-        filter: `owner_user_id=eq.${client.user_id}`,
-      }, () => {
-        fetchCampaigns();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [client]);
-
-  const fetchAllData = useCallback(async () => {
-    if (!client) return;
-    setIsLoading(true);
-    await Promise.all([fetchBotStatus(), fetchStats(), fetchCampaigns(), fetchRecentCalls(), fetchOutboundLeads()]);
-    setIsLoading(false);
-  }, [client]);
-
-  async function fetchBotStatus() {
+  const fetchBotStatus = useCallback(async () => {
     if (!client) return;
     try {
       const { data, error } = await (supabase as any)
@@ -147,9 +118,9 @@ export default function VoiceTelecallerPage() {
       console.error("Failed to check bot status:", err);
       setHasBot(false);
     }
-  }
+  }, [client]);
 
-  async function fetchStats() {
+  const fetchStats = useCallback(async () => {
     if (!client) return;
 
     const now = new Date();
@@ -178,13 +149,12 @@ export default function VoiceTelecallerPage() {
       successRate: total > 0 ? Math.round((completed / total) * 100) : 0,
       leadsCount: leadsRes.count || 0,
     });
-  }
+  }, [client]);
 
-  async function fetchCampaigns() {
+  const fetchCampaigns = useCallback(async () => {
     if (!client) return;
     
     try {
-      // 1. Fetch lists (wildcard select to be safe against schema changes)
       const { data: lists, error: listError } = await (supabase as any).from("outbound_contact_lists")
         .select(`*`)
         .eq("owner_user_id", client.user_id)
@@ -197,20 +167,30 @@ export default function VoiceTelecallerPage() {
         return;
       }
 
-      // 2. Fetch schedules separately
       const listIds = lists.map((l: any) => l.id);
-      const { data: schedules, error: schedError } = await (supabase as any).from("outbound_scheduled_calls")
-        .select("*")
-        .in("list_id", listIds);
+      
+      const [schedulesRes, contactCountsRes, callLogsCountsRes] = await Promise.all([
+        (supabase as any).from("outbound_scheduled_calls").select("*").in("list_id", listIds),
+        (supabase as any).from("outbound_contacts").select("list_id").in("list_id", listIds),
+        (supabase as any).from("outbound_call_logs").select("list_id").in("list_id", listIds),
+      ]);
 
-      if (schedError) {
-        console.error("Error fetching schedules:", schedError);
-      }
+      const schedules = schedulesRes.data || [];
+      const allContacts = contactCountsRes.data || [];
+      const allCallLogs = callLogsCountsRes.data || [];
+
+      const contactCountsMap: Record<string, number> = {};
+      allContacts.forEach((c: any) => {
+        contactCountsMap[c.list_id] = (contactCountsMap[c.list_id] || 0) + 1;
+      });
+
+      const callLogsCountsMap: Record<string, number> = {};
+      allCallLogs.forEach((l: any) => {
+        callLogsCountsMap[l.list_id] = (callLogsCountsMap[l.list_id] || 0) + 1;
+      });
 
       const mapped = lists.map((d: any) => {
         const listSchedules = schedules?.filter((s: any) => s.list_id === d.id) || [];
-        
-        // Get newest schedule
         const latestSched = listSchedules.length > 0 
           ? [...listSchedules].sort((a: any, b: any) => {
               const dateA = new Date(a.created_at || a.scheduled_at || 0).getTime();
@@ -220,10 +200,8 @@ export default function VoiceTelecallerPage() {
           : null;
 
         let status = latestSched?.status || 'draft';
-        
-        // Use available count fields from list data safely
-        const total = d.contact_count || d.total_contacts || 0;
-        const called = latestSched?.contacts_called || 0;
+        const total = contactCountsMap[d.id] || d.contact_count || d.total_contacts || 0;
+        const called = callLogsCountsMap[d.id] || latestSched?.contacts_called || 0;
         
         if (status === 'running' && total > 0 && called >= total) {
           status = 'completed';
@@ -244,9 +222,9 @@ export default function VoiceTelecallerPage() {
     } catch (err) {
       console.error("fetchCampaigns error:", err);
     }
-  }
+  }, [client]);
 
-  async function fetchRecentCalls() {
+  const fetchRecentCalls = useCallback(async () => {
     if (!client) return;
     const { data } = await (supabase as any).from("outbound_call_logs")
       .select("id, phone, name, duration, transcript, call_url, call_type, call_status, created_at")
@@ -268,9 +246,9 @@ export default function VoiceTelecallerPage() {
       }));
       setRecentCalls(mapped);
     }
-  }
+  }, [client]);
 
-  async function fetchOutboundLeads() {
+  const fetchOutboundLeads = useCallback(async () => {
     if (!client) return;
     try {
       const { data: leads, error: leadError } = await (supabase as any).from("outbound_leads")
@@ -285,9 +263,6 @@ export default function VoiceTelecallerPage() {
         return;
       }
 
-      // Fetch call logs for these leads
-      const logIds = leads.map((l: any) => l.id).filter(Boolean); // Actually it might be linked via table relation or a column
-      // Looking at the previous code, it used a nested select on 'outbound_call_logs'.
       const { data: logs } = await (supabase as any).from("outbound_call_logs")
         .select("id, transcript, phone, name, call_url, duration")
         .in("id", leads.map((l: any) => l.call_log_id).filter(Boolean));
@@ -312,7 +287,61 @@ export default function VoiceTelecallerPage() {
     } catch (err) {
       console.error("fetchOutboundLeads error:", err);
     }
-  }
+  }, [client]);
+
+  const fetchAllData = useCallback(async () => {
+    if (!client) return;
+    setIsLoading(true);
+    await Promise.all([fetchBotStatus(), fetchStats(), fetchCampaigns(), fetchRecentCalls(), fetchOutboundLeads()]);
+    setIsLoading(false);
+  }, [client, fetchBotStatus, fetchStats, fetchCampaigns, fetchRecentCalls, fetchOutboundLeads]);
+
+  useEffect(() => {
+    if (!client) return;
+    fetchAllData();
+  }, [client, fetchAllData]);
+
+  // Realtime subscription for campaigns and logs
+  useEffect(() => {
+    if (!client) return;
+
+    const channel = supabase
+      .channel("telecaller-realtime")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "outbound_contact_lists",
+        filter: `owner_user_id=eq.${client.user_id}`,
+      }, () => fetchAllData())
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "outbound_scheduled_calls",
+        filter: `owner_user_id=eq.${client.user_id}`,
+      }, () => fetchCampaigns())
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "outbound_call_logs",
+        filter: `owner_user_id=eq.${client.user_id}`,
+      }, () => {
+        fetchCampaigns();
+        fetchRecentCalls();
+        fetchStats();
+      })
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "outbound_leads",
+        filter: `owner_user_id=eq.${client.user_id}`,
+      }, () => {
+        fetchOutboundLeads();
+        fetchStats();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [client, fetchAllData, fetchCampaigns, fetchRecentCalls, fetchStats, fetchOutboundLeads]);
 
   if (contextLoading) {
     return <LoadingSkeleton />;
