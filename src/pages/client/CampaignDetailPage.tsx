@@ -632,7 +632,7 @@ export default function CampaignDetailPage() {
               </Badge>
               {campaign.created_at && (
                 <span className="text-xs text-muted-foreground">
-                  Created {formatDistanceToNow(new Date(campaign.created_at), { addSuffix: true })}
+                  Created {format(new Date(campaign.created_at), "dd MMM yyyy, hh:mm a")}
                 </span>
               )}
             </div>
@@ -878,8 +878,8 @@ export default function CampaignDetailPage() {
                         <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[200px] truncate" title={log.ai_summary || ""}>
                           {log.ai_summary || "—"}
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {log.executed_at ? formatDistanceToNow(new Date(log.executed_at), { addSuffix: true }) : "—"}
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {log.executed_at ? format(new Date(log.executed_at), "dd MMM yyyy, hh:mm a") : "—"}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button 

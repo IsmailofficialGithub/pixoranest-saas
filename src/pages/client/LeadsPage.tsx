@@ -583,7 +583,7 @@ function KanbanCard({ lead, onView, onEdit, onDelete, onStatusChange }: {
       </div>
       <div className="flex items-center justify-between mt-2 pt-2 border-t">
         <span className="text-[10px] text-muted-foreground">
-          {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+          {format(new Date(lead.created_at), "dd MMM yyyy, hh:mm a")}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
@@ -716,7 +716,7 @@ function TableView({ leads, selectedIds, setSelectedIds, onViewDetail, onEdit, o
                     ) : <span className="text-xs text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+                    {format(new Date(lead.created_at), "dd MMM yyyy, hh:mm a")}
                   </TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
                     <DropdownMenu>

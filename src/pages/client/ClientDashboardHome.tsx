@@ -383,7 +383,7 @@ export default function ClientDashboardHome() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-slate-800 truncate">{item.description}</p>
                       <p className="text-xs text-slate-500">
-                        {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+                        {format(new Date(item.timestamp), "dd MMM yyyy, hh:mm a")}
                       </p>
                     </div>
                     <Badge className={cn(

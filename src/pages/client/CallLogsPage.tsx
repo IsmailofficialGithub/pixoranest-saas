@@ -554,7 +554,7 @@ export default function CallLogsPage() {
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                           {call.executed_at
-                            ? formatDistanceToNow(new Date(call.executed_at), { addSuffix: true })
+                            ? format(new Date(call.executed_at), "dd MMM yyyy, hh:mm a")
                             : "—"}
                         </TableCell>
                         <TableCell>
@@ -614,7 +614,7 @@ export default function CallLogsPage() {
                     )}
                     <div className="flex items-center justify-between pt-1">
                       <span className="text-[10px] text-muted-foreground">
-                        {call.executed_at ? formatDistanceToNow(new Date(call.executed_at), { addSuffix: true }) : ""}
+                        {call.executed_at ? format(new Date(call.executed_at), "dd MMM yyyy, hh:mm a") : ""}
                       </span>
                       <div className="flex gap-1">
                         {call.recording_url && (
