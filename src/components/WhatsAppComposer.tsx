@@ -12,6 +12,16 @@ export function WhatsAppComposer() {
   const { sendMessage, isSending } = useWhatsApp();
 
   const handleSend = async () => {
+    const cleaned = phoneNumber.replace(/[^0-9]/g, '');
+    if (cleaned.length < 11) {
+      toast.error('Invalid phone number', { description: 'Please include country code (e.g. 91). Min 11 digits.' });
+      return;
+    }
+    if (cleaned.length > 15) {
+      toast.error('Invalid phone number', { description: 'Phone number is too long. Max 15 digits.' });
+      return;
+    }
+
     if (!phoneNumber || !message) {
       toast.error('Phone number and message are required');
       return;

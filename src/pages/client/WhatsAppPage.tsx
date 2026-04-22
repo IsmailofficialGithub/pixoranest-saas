@@ -815,7 +815,31 @@ function SendMessageModal({
 
   const handleSend = async () => {
     console.log("🚀 Sending WhatsApp Message:")
-    if (!phone.trim()) return toast({ title: "Phone required", variant: "destructive" });
+    
+    // Clean phone number for validation
+    const cleanedPhone = phone.trim().replace(/[^0-9]/g, "");
+    
+    if (!phone.trim()) {
+      return toast({ title: "Phone required", variant: "destructive" });
+    }
+
+    // Check for country code and length
+    if (cleanedPhone.length < 11) {
+      return toast({ 
+        title: "Invalid Phone Number", 
+        description: "Please include country code (e.g., 91 for India). Minimum 11 digits required.", 
+        variant: "destructive" 
+      });
+    }
+
+    if (cleanedPhone.length > 15) {
+      return toast({ 
+        title: "Invalid Phone Number", 
+        description: "Phone number is too long. Maximum 15 digits allowed.", 
+        variant: "destructive" 
+      });
+    }
+
     if (requiresMedia && !mediaUrl.trim()) return toast({ title: `${headerFormat} URL required`, variant: "destructive" });
     
     setSending(true);
@@ -1030,6 +1054,20 @@ function CreateCampaignWizardWA({ open, onOpenChange, clientId, onCreated, selec
   const reset = () => { setStep(1); setName(""); setContacts([]); setMessageContent(""); };
 
   const handleCreate = async () => {
+    // Basic validation for contacts
+    const invalidContacts = contacts.filter(c => {
+      const cleaned = c.phone.replace(/[^0-9]/g, "");
+      return cleaned.length < 11 || cleaned.length > 15;
+    });
+
+    if (invalidContacts.length > 0) {
+      return toast({
+        title: "Invalid Contacts Detected",
+        description: `${invalidContacts.length} contacts have invalid phone numbers or are missing country codes.`,
+        variant: "destructive"
+      });
+    }
+
     setCreating(true);
     try {
       const { data: campaign } = await supabase.from("whatsapp_campaigns").insert({

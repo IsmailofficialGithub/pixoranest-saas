@@ -3,7 +3,6 @@ import { toast } from "sonner";
 
 export const WHATSAPP_API_URL = "https://app.whapihub.com/v2/whatsapp-business";
 const DEFAULT_API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
-const SEND_MESSAGE_WEBHOOK_URL = import.meta.env.VITE_SEND_MESSAGE_WEBHOOK_URL || "https://auto.devdabs.com/webhook/send-text-message";
 
 export interface SendWhatsAppMessageParams {
   to: string;
@@ -24,66 +23,37 @@ export interface SendWhatsAppMessageParams {
  */
 export async function sendWhatsAppMessage(params: SendWhatsAppMessageParams) {
   try {
+    const API_URL = import.meta.env.VITE_LEADNEST_SEND_MESSAGE;
 
-    // 2. Build the request body based on message type
-    const requestBody: any = {
+    if (!API_URL) {
+      console.error("VITE_LEADNEST_SEND_MESSAGE is not defined in .env");
+      return { success: false, message: "API configuration missing" };
+    }
+
+    const requestBody = {
       to: params.to.replace('+', ''),
-      type: params.type || "text",
+      phoneNoId: params.phoneNoId,
+      type: "text",
+      text: params.body || params.text
     };
 
-    if (params.phoneNoId) {
-      requestBody.phoneNoId = params.phoneNoId;
-    }
-
-    if (params.type === "template") {
-      requestBody.name = params.name?.trim().toLowerCase();
-      let lang = params.language || "en_US";
-
-      // Normalize 'en' to 'en_US' as per user's common mistakes list
-      if (lang === "en") lang = "en_US";
-      requestBody.language = lang;
-
-      // Only include bodyParams if they exist and have content
-      if (params.bodyParams && params.bodyParams.length > 0) {
-        requestBody.bodyParams = params.bodyParams;
-      }
-
-      // Handle Media Header Params (Image, Video, Audio, Document)
-      if (params.mediaUrl) {
-        requestBody.media = {
-          link: params.mediaUrl
-        };
-      }
-    } else if (params.type && ["image", "video", "audio", "document"].includes(params.type)) {
-      requestBody.media = {
-        link: params.mediaUrl || params.body || params.text
-      };
-      if (params.body || params.text) {
-        requestBody.caption = params.body || params.text;
-      }
-    } else {
-      // For text messages
-      requestBody.body = params.body ?? params.text;
-    }
-
-    console.log("🚀 Sending WhatsApp Payload:", JSON.stringify(requestBody, null, 2));
-    console.log("🚀 Sending WhatsApp Payload:", SEND_MESSAGE_WEBHOOK_URL);
-    const response = await fetch(SEND_MESSAGE_WEBHOOK_URL, {
+    console.log("🚀 Sending LeadNest Payload:", JSON.stringify(requestBody, null, 2));
+    
+    const response = await fetch(API_URL, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(requestBody),
     });
 
     const result = await response.json();
-    if (result.success) {
-      console.log("📥 WhatsApp API Response:", result);
-      // 2. Log the message to our Supabase database (only if client_id is present)
+    
+    if (result.success || response.ok) {
+      console.log("📥 LeadNest API Response:", result);
+      // Log the message to our Supabase database (only if client_id is present)
       if (params.client_id) {
-        let logContent = params.body ?? params.text ?? "";
-        if (params.type === "template") {
-          logContent = `Template: ${params.name} | Variables: ${params.bodyParams?.join(", ") || "none"}`;
-        }
-
-        console.log('Heree')
+        const logContent = params.body ?? params.text ?? "";
 
         const { error: dbError } = await (supabase.from("whatsapp_messages" as any) as any).insert({
           application_id: params.application_id,
@@ -99,20 +69,15 @@ export async function sendWhatsAppMessage(params: SendWhatsAppMessageParams) {
         });
 
         if (dbError) {
-          console.warn("Message Send but failed to log in history:", dbError);
-          return { success: false, message: "Message sent but failed to log in history" };
+          console.warn("Message Sent but failed to log in history:", dbError);
+          return { success: true, message: "Message sent but failed to log in history" };
         }
-      } else {
-        console.log("Admin test message detected, skipping database log.");
-        return { success: true, message: "Message sent successfully" };
       }
-
+      return { success: true, message: "Message sent successfully" };
     } else {
-      console.error("📥 WhatsApp API Response:", result);
+      console.error("📥 LeadNest API Error:", result);
       return { success: false, message: result?.message || result?.error || "Failed to send WhatsApp message" };
     }
-
-
   } catch (error: any) {
     console.error("WhatsApp Send Error:", error);
     return { success: false, message: error.message || "Failed to send WhatsApp message" };
