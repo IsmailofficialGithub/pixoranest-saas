@@ -1,15 +1,14 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { 
-  Search, MoreVertical, Paperclip, Smile, Send, 
-  MessageSquare, User, Filter, Phone, CheckCheck, 
-  ChevronDown, Image as ImageIcon, FileText, Zap, 
-  MoreHorizontal, Bot, Clock, X, Loader2
+  Search, Paperclip, Smile, Send, 
+  MessageSquare, Phone, CheckCheck, 
+  ChevronDown, Zap, MoreHorizontal, Bot, X, Loader2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,7 +38,6 @@ export default function WhatsAppInbox() {
     if (!client) return;
     setIsLoadingChats(true);
     
-    // Fetch unique conversations by grouping messages
     const { data, error } = await supabase
       .from('whatsapp_messages')
       .select('phone_number, sender_name, message_content, sent_at, status, direction')
@@ -47,12 +45,11 @@ export default function WhatsAppInbox() {
       .order('sent_at', { ascending: false });
     
     if (!error && data) {
-      // Group by phone number to create "chat" objects
       const chatMap = new Map();
       data.forEach(msg => {
         if (!chatMap.has(msg.phone_number)) {
           chatMap.set(msg.phone_number, {
-            id: msg.phone_number, // Use phone as ID for simplicity
+            id: msg.phone_number,
             phone_number: msg.phone_number,
             contact_name: msg.sender_name || msg.phone_number,
             last_message_snippet: msg.message_content,
@@ -71,14 +68,13 @@ export default function WhatsAppInbox() {
     setIsLoadingChats(false);
   }, [client, activeChatId]);
 
-  // Fetch Messages
   const fetchMessages = useCallback(async (chatId: string) => {
     if (!client) return;
     setIsLoadingMessages(true);
     const { data, error } = await supabase
       .from('whatsapp_messages')
       .select('*')
-      .eq('phone_number', chatId) // chatId is the phone number now
+      .eq('phone_number', chatId)
       .eq('client_id', client.id)
       .order('sent_at', { ascending: true });
     
@@ -89,51 +85,16 @@ export default function WhatsAppInbox() {
   }, [client]);
 
   useEffect(() => {
-    if (client) {
-      fetchChats();
-    }
+    if (client) fetchChats();
   }, [client]);
 
   useEffect(() => {
-    if (activeChatId) {
-      fetchMessages(activeChatId);
-    } else {
-      setMessages([]);
-    }
+    if (activeChatId) fetchMessages(activeChatId);
+    else setMessages([]);
   }, [activeChatId]);
-
-  // Realtime Subscriptions
-  useEffect(() => {
-    if (!client) return;
-
-    const chatsChannel = supabase
-      .channel('whatsapp_chats_realtime')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'whatsapp_chats',
-        filter: `client_id=eq.${client.id}`
-      }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setChats(prev => [payload.new, ...prev]);
-        } else if (payload.eventType === 'UPDATE') {
-          setChats(prev => prev.map(c => c.id === payload.new.id ? payload.new : c).sort((a, b) => 
-            new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
-          ));
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(chatsChannel);
-    };
-  }, [client]);
 
   useEffect(() => {
     if (!activeChatId) return;
-    const chat = chats.find(c => c.id === activeChatId);
-    if (!chat) return;
-
     const messagesChannel = supabase
       .channel(`messages_${activeChatId}`)
       .on('postgres_changes', { 
@@ -143,32 +104,19 @@ export default function WhatsAppInbox() {
         filter: `phone_number=eq.${activeChatId}`
       }, (payload) => {
         setMessages(prev => [...prev, payload.new]);
-        // Also refresh chat list to update snippet
         fetchChats();
       })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(messagesChannel);
-    };
-  }, [activeChatId, chats]);
+    return () => { supabase.removeChannel(messagesChannel); };
+  }, [activeChatId]);
 
   const activeChat = useMemo(() => 
     chats.find(c => c.id === activeChatId), 
   [chats, activeChatId]);
 
   const filteredChats = useMemo(() => {
-    // Frontend de-duplication fallback to prevent same contact appearing twice
-    const uniqueChatsMap = new Map();
-    chats.forEach(chat => {
-      if (!uniqueChatsMap.has(chat.phone_number)) {
-        uniqueChatsMap.set(chat.phone_number, chat);
-      }
-    });
-    
-    const uniqueChats = Array.from(uniqueChatsMap.values());
-
-    return uniqueChats.filter(chat => {
+    return chats.filter(chat => {
       const matchesSearch = (chat.contact_name || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
                            chat.phone_number.includes(searchQuery);
       const matchesFilter = activeFilter === "All" || chat.status === activeFilter;
@@ -178,322 +126,171 @@ export default function WhatsAppInbox() {
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || !activeChat || isSending) return;
-
     setIsSending(true);
     try {
       const result = await sendWhatsAppMessage({
         to: activeChat.phone_number,
         body: messageInput,
-        application_id: activeChat.application_id,
         client_id: client?.id,
         type: "text"
       });
-
-      if (result.success) {
-        setMessageInput("");
-      } else {
-        toast({
-          title: "Failed to send message",
-          description: result.message,
-          variant: "destructive"
-        });
-      }
-    } catch (err: any) {
+      if (result.success) setMessageInput("");
+    } catch (err) {
       console.error(err);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred while sending the message.",
-        variant: "destructive"
-      });
     } finally {
       setIsSending(false);
     }
   };
 
   return (
-    <div className="flex bg-[#0B0E11] dark:bg-card rounded-3xl overflow-hidden border border-border shadow-2xl min-h-[600px] h-[calc(100vh-210px)] relative">
-      {/* ─── Sidebar ─── */}
+    <div className="flex h-full w-full overflow-hidden bg-black/20 backdrop-blur-xl rounded-xl">
+      {/* Sidebar */}
       <div className={cn(
-        "flex flex-col border-r border-border bg-[#14171A] dark:bg-card/50 transition-all duration-300 z-20 overflow-hidden",
-        "fixed inset-0 w-full sm:relative sm:inset-auto sm:w-[320px] md:w-[380px] sm:h-full sm:translate-x-0",
-        !sidebarOpen ? "-translate-x-full sm:translate-x-0" : "translate-x-0"
+        "flex flex-col border-r border-white/5 bg-black/40 transition-all duration-300",
+        sidebarOpen ? "w-full md:w-80 lg:w-96" : "w-0 md:w-20 overflow-hidden"
       )}>
-        {/* Filters */}
-        <div className="p-4 space-y-4 border-b border-white/5">
-          <div className="flex items-center justify-between sm:hidden">
-            <h2 className="text-lg font-bold text-white">Inbox</h2>
-            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
-              <X className="h-5 w-5 text-white" />
+        <div className="p-4 space-y-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-white">Messages</h2>
+            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSidebarOpen(false)}>
+              <X className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+            <Input 
+              placeholder="Search..." 
+              className="pl-9 bg-white/5 border-white/10"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide no-scrollbar -mx-1 px-1">
             {FILTERS.map(f => (
-              <button
+              <Button
                 key={f}
-                onClick={() => setActiveFilter(f)}
+                variant={activeFilter === f ? "default" : "outline"}
+                size="sm"
                 className={cn(
-                  "px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all border",
-                  activeFilter === f 
-                    ? "bg-primary text-primary-foreground border-primary" 
-                    : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20"
+                  "rounded-full text-[10px] h-7 whitespace-nowrap transition-all", 
+                  activeFilter === f ? "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20" : "bg-white/5 border-white/10 hover:bg-white/10"
                 )}
+                onClick={() => setActiveFilter(f)}
               >
                 {f}
-              </button>
+              </Button>
             ))}
-          </div>
-
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors" />
-            <Input 
-              placeholder="Search here..." 
-              className="pl-10 h-10 bg-[#1D2125] border-none text-sm placeholder:text-slate-600 rounded-xl focus-visible:ring-1 focus-visible:ring-primary/30 text-slate-200"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
           </div>
         </div>
 
-        {/* Chat List */}
         <ScrollArea className="flex-1">
-          {isLoadingChats ? (
-            <div className="flex flex-col items-center justify-center p-12 opacity-50">
-              <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
-              <p className="text-xs text-white">Syncing conversations...</p>
-            </div>
-          ) : (
-            <div className="flex flex-col">
-              {filteredChats.map(chat => (
-                <button
-                  key={chat.id}
-                  onClick={() => {
-                    setActiveChatId(chat.id);
-                    if (window.innerWidth < 640) setSidebarOpen(false);
-                  }}
-                  className={cn(
-                    "flex items-center gap-3 p-4 transition-all hover:bg-white/5 relative group text-left w-full",
-                    activeChatId === chat.id ? "bg-white/10" : ""
-                  )}
-                >
-                  {activeChatId === chat.id && (
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
-                  )}
-                  <Avatar className="h-12 w-12 border-2 border-white/5 shrink-0">
-                    <AvatarFallback className="bg-gradient-to-br from-slate-700 to-slate-800 text-white font-bold">
-                      {(chat.contact_name || chat.phone_number || "??").substring(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-0.5">
-                      <h4 className="text-sm font-bold text-slate-200 truncate group-hover:text-white">{chat.contact_name || chat.phone_number}</h4>
-                      <span className="text-[10px] text-slate-500 shrink-0 ml-2">
-                        {chat.last_message_at ? formatDistanceToNow(new Date(chat.last_message_at), { addSuffix: false }) : ""}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 truncate leading-relaxed">
-                      {chat.last_message}
-                    </p>
+          <div className="p-2 space-y-1">
+            {isLoadingChats ? (
+              <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 text-blue-500 animate-spin" /></div>
+            ) : filteredChats.map((chat) => (
+              <button
+                key={chat.id}
+                onClick={() => {
+                  setActiveChatId(chat.id);
+                  if (window.innerWidth < 768) setSidebarOpen(false);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 p-3 rounded-xl transition-all",
+                  activeChatId === chat.id ? "bg-blue-600/20 border-blue-500/20" : "hover:bg-white/5"
+                )}
+              >
+                <Avatar className="h-12 w-12 border border-white/5">
+                  <AvatarFallback className="bg-blue-600 text-white font-bold">
+                    {chat.contact_name?.substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 text-left min-w-0">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-white truncate text-sm">{chat.contact_name}</h3>
+                    <span className="text-[10px] text-white/40">
+                      {chat.last_message_at ? formatDistanceToNow(new Date(chat.last_message_at), { addSuffix: false }) : ""}
+                    </span>
                   </div>
-                  {chat.unread_count > 0 && (
-                    <div className="bg-primary h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold text-primary-foreground shrink-0">
-                      {chat.unread_count}
-                    </div>
-                  )}
-                </button>
-              ))}
-              {filteredChats.length === 0 && (
-                <div className="p-8 text-center opacity-30">
-                  <MessageSquare className="h-12 w-12 mx-auto mb-2" />
-                  <p className="text-xs">No conversations found</p>
+                  <p className="text-xs text-white/60 truncate">{chat.last_message_snippet}</p>
                 </div>
-              )}
-            </div>
-          )}
+              </button>
+            ))}
+          </div>
         </ScrollArea>
       </div>
 
-      {/* ─── Chat Window ─── */}
-      <div className="flex-1 flex flex-col bg-[#0B0E11] relative shadow-inner h-full">
+      {/* Chat Window */}
+      <div className={cn("flex-1 flex flex-col min-w-0", !activeChatId && "hidden md:flex")}>
         {activeChat ? (
           <>
-            {/* Chat Header */}
-            <div className="h-16 md:h-20 flex items-center justify-between px-4 md:px-6 border-b border-white/5 bg-[#14171A]/80 backdrop-blur-md z-10 shrink-0">
-              <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-                <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setSidebarOpen(true)}>
-                  <ChevronDown className="h-5 w-5 text-white rotate-90" />
+            <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/20 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSidebarOpen(true)}>
+                  <ChevronDown className="h-5 w-5 rotate-90" />
                 </Button>
-                <Avatar className="h-8 w-8 md:h-10 md:w-10 border border-white/10">
-                  <AvatarFallback className="bg-slate-800 text-white text-xs font-bold">{(activeChat.contact_name || chat.phone_number || "??").substring(0, 2).toUpperCase()}</AvatarFallback>
+                <Avatar className="h-10 w-10 border border-white/10">
+                  <AvatarFallback className="bg-white/5 text-white">
+                    {activeChat.contact_name?.substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
                 </Avatar>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <h3 className="text-sm md:text-base font-black text-white tracking-tight truncate">{activeChat.contact_name || activeChat.phone_number}</h3>
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 shrink-0">
-                      <div className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-primary animate-pulse" />
-                      <span className="text-[8px] md:text-[9px] font-bold text-primary uppercase tracking-widest">{activeChat.status || 'Active'}</span>
-                    </div>
-                  </div>
-                  <p className="text-[9px] md:text-[11px] text-slate-500 font-medium truncate">{activeChat.phone_number}</p>
+                <div>
+                  <h3 className="font-bold text-white text-sm md:text-base">{activeChat.contact_name}</h3>
+                  <p className="text-[10px] text-white/40">{activeChat.phone_number}</p>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2 md:gap-4">
-                <div className="hidden lg:flex items-center bg-[#1D2125] rounded-xl px-4 py-2 border border-white/5 gap-3">
-                  <span className="text-xs font-bold text-slate-300 font-mono tracking-tighter">{activeChat.phone_number}</span>
-                  <div className="w-[1px] h-4 bg-white/10" />
-                  <div className="flex items-center gap-2">
-                    <div className="p-1 bg-green-500/20 rounded-md">
-                       <MessageSquare className="h-3 w-3 text-green-500" />
-                    </div>
-                    <ChevronDown className="h-3 w-3 text-slate-500" />
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 md:gap-2">
-                  <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-green-500" />
-                  <span className="text-[8px] md:text-[10px] font-bold text-green-500 uppercase tracking-widest whitespace-nowrap">Connected</span>
-                </div>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="text-white/40 hover:text-white"><Phone className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" className="text-white/40 hover:text-white"><MoreHorizontal className="h-4 w-4" /></Button>
               </div>
             </div>
 
-            {/* Message List */}
-            <ScrollArea className="flex-1 px-4 py-4 md:p-6 min-h-0">
-              <div className="flex flex-col gap-6 max-w-4xl mx-auto pb-6">
-                {isLoadingMessages ? (
-                  <div className="flex justify-center py-10">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : messages.length > 0 ? (
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {messages.map((msg) => (
-                      <motion.div
-                        key={msg.id}
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        className={cn(
-                          "flex flex-col max-w-[90%] md:max-w-[80%]",
-                          msg.direction === "inbound" ? "self-start items-start" : "self-end items-end"
-                        )}
-                      >
-                        <div className="flex items-end gap-2 md:gap-3">
-                           {msg.direction === "inbound" && (
-                              <Avatar className="h-6 w-6 md:h-8 md:w-8 shrink-0">
-                                <AvatarFallback className="bg-slate-700 text-[8px] md:text-[10px] text-white font-bold">{(activeChat.contact_name || "??").substring(0, 2).toUpperCase()}</AvatarFallback>
-                              </Avatar>
-                           )}
-                           <div className={cn(
-                              "px-3 py-2 md:px-4 md:py-3 rounded-2xl text-[13px] md:text-sm relative group whitespace-pre-wrap leading-relaxed transition-all",
-                              msg.direction === "inbound" 
-                                ? "bg-[#1D2125] text-slate-200 rounded-bl-none border border-white/5" 
-                                : "bg-primary text-primary-foreground rounded-br-none shadow-lg shadow-primary/10"
-                            )}>
-                              {msg.message_content}
-                              <div className={cn(
-                                "flex items-center gap-1 mt-1 justify-end",
-                                msg.direction === "inbound" ? "text-slate-500" : "text-white/60"
-                              )}>
-                                <span className="text-[9px] md:text-[10px] font-medium">{format(new Date(msg.sent_at), "hh:mm a")}</span>
-                                {msg.direction !== "inbound" && <CheckCheck className={cn("h-2.5 w-2.5 md:h-3 md:w-3", msg.status === 'read' ? "text-blue-400" : "text-white/80")} />}
-                              </div>
-                              
-                              <div className={cn(
-                                "absolute top-0 hidden group-hover:flex items-center gap-1 transition-opacity animate-in fade-in zoom-in duration-200",
-                                msg.direction === "inbound" ? "-right-8 md:-right-10 flex-col" : "-left-8 md:-left-10 flex-col"
-                              )}>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 md:h-8 md:w-8 rounded-full bg-white/5 hover:bg-white/10">
-                                  <MoreHorizontal className="h-3 w-3 md:h-4 md:w-4 text-slate-400" />
-                                </Button>
-                                {msg.metadata?.ai_response && (
-                                  <div className="p-1 md:p-1.5 bg-primary/10 rounded-full border border-primary/20" title="Sent by AI Bot">
-                                    <Bot className="h-2.5 w-2.5 md:h-3 md:w-3 text-primary" />
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {msg.metadata?.ai_response && (
-                                <div className="absolute -right-2 -top-2 p-0.5 md:p-1 bg-[#14171A] border border-primary/20 rounded-full shadow-lg">
-                                  <Bot className="h-2 w-2 md:h-2.5 md:w-2.5 text-primary" />
-                                </div>
-                              )}
-                           </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full py-20 text-center opacity-40">
-                        <MessageSquare className="h-12 w-12 md:h-16 md:w-16 mb-4 text-slate-500" />
-                        <p className="text-xs md:text-sm font-medium text-slate-400">No messages yet with this contact</p>
-                        <p className="text-[10px] md:text-xs text-slate-500 max-w-[200px] mt-2 italic">Start the conversation by sending a template or manual message</p>
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4 max-w-4xl mx-auto">
+                {messages.map((msg) => (
+                  <div key={msg.id} className={cn("flex items-end gap-2", msg.direction === 'outbound' ? "flex-row-reverse" : "flex-row")}>
+                    <Avatar className="h-8 w-8 shrink-0 mb-1">
+                      <AvatarFallback className={cn("text-[10px]", msg.direction === 'outbound' ? "bg-white/10" : "bg-blue-600")}>
+                        {msg.direction === 'outbound' ? 'AI' : (msg.sender_name || 'U').substring(0, 1).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className={cn("max-w-[80%] flex flex-col gap-1", msg.direction === 'outbound' ? "items-end" : "items-start")}>
+                      <div className={cn("p-3 rounded-2xl text-sm", msg.direction === 'outbound' ? "bg-blue-600 rounded-br-none" : "bg-white/10 rounded-bl-none")}>
+                        {msg.message_content}
+                      </div>
+                      <span className="text-[9px] text-white/30">{format(new Date(msg.sent_at), 'hh:mm a')}</span>
                     </div>
-                )}
+                  </div>
+                ))}
               </div>
             </ScrollArea>
-     
-            {/* Chat Input */}
-            <div className="p-4 md:p-6 bg-[#14171A]/90 backdrop-blur-md border-t border-white/5 z-10 shrink-0">
-              <div className="max-w-4xl mx-auto space-y-3 md:space-y-4">
-                <div className="relative group">
-                  <Input 
-                    placeholder="Type a message..." 
-                    className="w-full bg-[#1D2125] border-none py-5 md:py-7 px-4 md:px-6 text-[13px] md:text-sm placeholder:text-slate-500 rounded-xl md:rounded-2xl focus-visible:ring-1 focus-visible:ring-primary/20 pr-12 text-slate-200"
-                    value={messageInput}
-                    onChange={e => setMessageInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                    disabled={isSending}
-                  />
-                  <div className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2">
-                    <Button 
-                      size="icon" 
-                      onClick={handleSendMessage}
-                      disabled={!messageInput.trim() || isSending}
-                      className={cn(
-                        "h-8 w-8 md:h-10 md:w-10 rounded-lg md:rounded-xl transition-all",
-                        messageInput ? "bg-primary text-primary-foreground scale-100 shadow-lg shadow-primary/20" : "bg-transparent text-slate-500 scale-90 pointer-events-none"
-                      )}
-                    >
-                      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 md:h-5 md:w-5" />}
-                    </Button>
-                  </div>
-                </div>
-     
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 md:gap-2 overflow-x-auto no-scrollbar pb-1">
-                    <Button variant="ghost" size="sm" className="bg-white/5 hover:bg-white/10 text-slate-400 rounded-lg md:rounded-xl h-8 md:h-9 px-3 md:px-4 text-[10px] md:text-[12px]">
-                      <Smile className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2 shrink-0" />
-                      Emoji
-                    </Button>
-                    <Button variant="ghost" size="sm" className="bg-white/5 hover:bg-white/10 text-slate-400 rounded-lg md:rounded-xl h-8 md:h-9 px-3 md:px-4 text-[10px] md:text-[12px]">
-                      <Paperclip className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2 shrink-0" />
-                      Attachments
-                    </Button>
-                    <Button variant="ghost" size="sm" className="bg-white/5 hover:bg-white/10 text-slate-400 rounded-lg md:rounded-xl h-8 md:h-9 px-3 md:px-4 text-[10px] md:text-[12px]">
-                      <Zap className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2 shrink-0" />
-                      Templates
-                    </Button>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 md:p-2.5 bg-primary/10 rounded-lg md:rounded-xl border border-primary/20 cursor-pointer hover:bg-primary/20 transition-all flex items-center justify-center">
-                       <div className="flex items-end space-x-0.5 h-3 md:h-4">
-                         <div className="w-0.5 h-1.5 md:h-2 bg-primary rounded-full" />
-                         <div className="w-0.5 h-3 md:h-4 bg-primary rounded-full" />
-                         <div className="w-0.5 h-2.5 md:h-3 bg-primary rounded-full" />
-                         <div className="w-0.5 h-2 md:h-2.5 bg-primary rounded-full" />
-                         <div className="w-0.5 h-3 md:h-3.5 bg-primary rounded-full" />
-                       </div>
-                    </div>
-                  </div>
-                </div>
+
+            <div className="p-4 border-t border-white/5 bg-black/20 flex-shrink-0">
+              <div className="max-w-4xl mx-auto flex items-center gap-2 bg-white/5 rounded-2xl p-2 pr-3">
+                <Button variant="ghost" size="icon" className="text-white/40 hover:text-white h-8 w-8"><Smile className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" className="text-white/40 hover:text-white h-8 w-8"><Paperclip className="h-4 w-4" /></Button>
+                <textarea
+                  placeholder="Type a message..."
+                  className="flex-1 bg-transparent border-none text-white text-sm focus:ring-0 resize-none py-2 max-h-32"
+                  rows={1}
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                />
+                <Button 
+                  size="icon" 
+                  className={cn("h-8 w-8 rounded-xl", messageInput.trim() ? "bg-blue-600" : "bg-white/10")}
+                  onClick={handleSendMessage}
+                  disabled={!messageInput.trim() || isSending}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-10 opacity-30">
-            <div className="p-6 bg-white/5 rounded-full mb-6">
-              <MessageSquare className="h-20 w-20 text-primary" />
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">LeadNest Inbox</h2>
-            <p className="text-slate-400 max-w-md">Select a conversation from the list to start messaging in real-time. All responses are logged and tracked.</p>
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <MessageSquare className="h-12 w-12 text-white/10 mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">Select a chat</h2>
           </div>
         )}
       </div>
