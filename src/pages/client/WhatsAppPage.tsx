@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useClient } from "@/contexts/ClientContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -38,7 +38,8 @@ import {
   MessageCircle, CheckCircle, CheckCheck, Zap, MessageSquare,
   Users, FileText, BarChart3, MoreVertical, Plus, Send,
   Clock, X, ArrowRight, Upload, Eye, RefreshCw, Trash2,
-  Copy, Pause, Play, Video, Headset, AlertCircle, Phone
+  Copy, Pause, Play, Video, Headset, AlertCircle, Phone,
+  Bot as BotIcon, Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow, format, startOfMonth } from "date-fns";
@@ -191,21 +192,19 @@ export default function WhatsAppPage() {
   }, [client, waService]);
 
   const fetchAssignedBots = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!client) return;
     
-    const { data, error } = await (supabase.from("whatsapp_user_access" as any) as any)
-      .select("application_id, whatsapp_applications(*)")
-      .eq("user_id", user.id);
+    const { data, error } = await (supabase.from("whatsapp_applications" as any) as any)
+      .select("*")
+      .eq("client_id", client.id);
     
     if (!error && data) {
-      const bots = data.map((d: any) => d.whatsapp_applications);
-      setAssignedBots(bots);
-      if (bots.length > 0 && !selectedAppId) {
-        setSelectedAppId(bots[0].id);
+      setAssignedBots(data);
+      if (data.length > 0 && !selectedAppId) {
+        setSelectedAppId(data[0].id);
       }
     }
-  }, [selectedAppId]);
+  }, [client, selectedAppId]);
 
   const fetchRecentMessages = useCallback(async () => {
     if (!client) return;
@@ -363,6 +362,10 @@ export default function WhatsAppPage() {
             <TabsTrigger value="template" className="flex-1 px-4 rounded-md transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs">
               <FileText className="h-3.5 w-3.5 mr-2" />
               Template
+            </TabsTrigger>
+            <TabsTrigger value="ai-settings" className="flex-1 px-4 rounded-md transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md font-bold text-xs">
+              <BotIcon className="h-3.5 w-3.5 mr-2" />
+              AI Settings
             </TabsTrigger>
           </TabsList>
         </div>
@@ -643,6 +646,10 @@ export default function WhatsAppPage() {
             </Table>
           </Card>
         </TabsContent>
+
+        <TabsContent value="ai-settings" className="mt-6">
+          <AISettingsTab clientId={client?.id || ""} />
+        </TabsContent>
       </Tabs>
 
       <SendMessageModal 
@@ -683,6 +690,175 @@ export default function WhatsAppPage() {
         templates={templates}
       />
     </div>
+  );
+}
+
+/* ─── AI Settings Tab ─── */
+function AISettingsTab({ clientId }: { clientId: string }) {
+  const [settings, setSettings] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    async function fetchAISettings() {
+      if (!clientId) return;
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('ai_chatbots' as any)
+        .select('*')
+        .eq('client_id', clientId)
+        .maybeSingle();
+      
+      if (!error && data) {
+        setSettings(data);
+      } else {
+        setSettings({
+          name: "LeadNest Bot",
+          system_prompt: "You are a helpful and professional assistant for LeadNest. Answer queries concisely and kindly in the same language as the user.",
+          temperature: 0.7,
+          is_active: true
+        });
+      }
+      setIsLoading(false);
+    }
+    fetchAISettings();
+  }, [clientId]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    const { error } = await (supabase
+      .from('ai_chatbots' as any) as any)
+      .upsert({
+        client_id: clientId,
+        ...settings,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      toast({ title: "Error saving settings", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Settings saved successfully" });
+    }
+    setIsSaving(false);
+  };
+
+  if (isLoading) return <div className="p-20 flex flex-col items-center justify-center opacity-40"><RefreshCw className="h-8 w-8 animate-spin mb-4" /><p>Loading AI settings...</p></div>;
+
+  return (
+    <Card className="border-border/50 bg-card/30 backdrop-blur-sm border shadow-xl overflow-hidden">
+      <CardHeader className="border-b border-border/50 bg-muted/20">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-xl md:text-2xl font-black flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-xl">
+                <BotIcon className="h-6 w-6 text-primary" />
+              </div>
+              AI Chatbot Configuration
+            </CardTitle>
+            <CardDescription className="text-xs mt-1">Configure how your AI agent interacts with customers on WhatsApp.</CardDescription>
+          </div>
+          <div className="flex items-center gap-3 bg-background/50 p-2 rounded-xl border border-border/50">
+             <Label htmlFor="bot-active" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-2">Agent Status</Label>
+             <Select value={settings.is_active ? "on" : "off"} onValueChange={(v) => setSettings({...settings, is_active: v === "on"})}>
+                <SelectTrigger className={cn(
+                  "w-28 h-9 text-xs font-bold border-none shadow-none focus:ring-0",
+                  settings.is_active ? "text-green-500" : "text-destructive"
+                )}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="on" className="text-green-500 font-bold">● ACTIVE</SelectItem>
+                  <SelectItem value="off" className="text-destructive font-bold">○ DISABLED</SelectItem>
+                </SelectContent>
+             </Select>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-8 p-6 md:p-8">
+        <div className="grid md:grid-cols-2 gap-8">
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Label className="text-xs font-black uppercase tracking-widest text-primary/70">Agent Identity</Label>
+              <Input 
+                className="h-12 bg-muted/30 border-border/50 focus:border-primary/50 text-sm font-medium"
+                value={settings.name} 
+                onChange={e => setSettings({...settings, name: e.target.value})}
+                placeholder="e.g. LeadNest Assistant"
+              />
+              <p className="text-[10px] text-muted-foreground">The name your AI will use when introducing itself.</p>
+            </div>
+
+            <div className="space-y-4 pt-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-black uppercase tracking-widest text-primary/70">Creativity (Temperature)</Label>
+                <Badge variant="outline" className="font-mono text-primary border-primary/20 bg-primary/5">{settings.temperature}</Badge>
+              </div>
+              <div className="px-2">
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.1" 
+                  className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                  value={settings.temperature}
+                  onChange={e => setSettings({...settings, temperature: parseFloat(e.target.value)})}
+                />
+                <div className="flex justify-between mt-2 px-1">
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase">Factual/Strict</span>
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase">Creative/Human</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-2 mt-8">
+               <h4 className="text-xs font-bold flex items-center gap-2 text-primary">
+                 <Zap className="h-3 w-3" /> Auto-Pilot Mode
+               </h4>
+               <p className="text-[11px] text-muted-foreground leading-relaxed">
+                 When enabled, the AI will automatically respond to all incoming WhatsApp messages using the instructions provided. 
+                 You can still intervene and send manual messages from the Inbox at any time.
+               </p>
+            </div>
+          </div>
+
+          <div className="space-y-2 flex flex-col">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-black uppercase tracking-widest text-primary/70">System Instructions (Personality)</Label>
+              <div className="flex items-center gap-1 text-[9px] font-bold text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full border">
+                <Clock className="h-2.5 w-2.5" />
+                Context Aware
+              </div>
+            </div>
+            <Textarea 
+              className="flex-1 min-h-[300px] text-sm leading-relaxed bg-muted/20 border-border/50 focus:border-primary/50 font-medium resize-none p-4" 
+              value={settings.system_prompt}
+              onChange={e => setSettings({...settings, system_prompt: e.target.value})}
+              placeholder="Tell the AI how to behave, what to know about your business, and how to handle inquiries..."
+            />
+            <div className="flex items-center gap-2 mt-2">
+              <Badge className="text-[9px] bg-blue-500/10 text-blue-500 border-blue-500/20">Pro Tip</Badge>
+              <p className="text-[10px] text-muted-foreground">Describe your products, pricing, and FAQs for better accuracy.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-6 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+           <div className="flex items-center gap-2 opacity-60">
+             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Real-time syncing enabled</p>
+           </div>
+           <Button 
+            onClick={handleSave} 
+            disabled={isSaving}
+            className="w-full sm:w-auto px-10 h-12 font-black text-sm shadow-xl shadow-primary/20 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+           >
+            {isSaving ? <RefreshCw className="h-4 w-4 animate-spin mr-3" /> : <CheckCheck className="h-5 w-5 mr-3" />}
+            UPDATE AI AGENT
+           </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

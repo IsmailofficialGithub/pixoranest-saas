@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
-  Plus, Search, Bot, UserPlus, Trash2, Globe, Phone, 
-  Settings2, Shield, ExternalLink, QrCode, SendHorizonal, SearchIcon
+  Plus, Search, Bot, Trash2, Globe, Phone, 
+  Settings2, ExternalLink, QrCode, SendHorizonal, SearchIcon
 } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { sendWhatsAppMessage } from "@/utils/whatsapp";
@@ -47,21 +47,24 @@ export default function AdminWhatsAppBotsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [isAddBotOpen, setIsAddBotOpen] = useState(false);
-  const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [isTestOpen, setIsTestOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [testMessage, setTestMessage] = useState({ to: "", text: "Test from Pixora!" });
   const [isSendingTest, setIsSendingTest] = useState(false);
   
-  // Form States
   const [newBot, setNewBot] = useState({
     name: "",
     provider_type: "api" as "baileys" | "api",
     panel_url: "",
     api_key: "",
     phone_id: "",
+    client_id: "",
+    ai_context: "You are a helpful assistant for Pixora.",
   });
+
+  const [clientSearch, setClientSearch] = useState("");
+  const debouncedClientSearch = useDebounce(clientSearch, 400);
 
   const [editBot, setEditBot] = useState<{
     id: string;
@@ -70,12 +73,13 @@ export default function AdminWhatsAppBotsPage() {
     panel_url: string;
     api_key: string;
     phone_id: string;
+    phone_number_id: string;
+    client_id: string;
+    ai_context: string;
     status: string;
   } | null>(null);
   
-  const [assignUserId, setAssignUserId] = useState("");
-  const [userSearch, setUserSearch] = useState("");
-  const debouncedUserSearch = useDebounce(userSearch, 300);
+  
 
   // Queries
   const { data: bots = [], isLoading: isBotsLoading } = useQuery({
@@ -89,54 +93,49 @@ export default function AdminWhatsAppBotsPage() {
     }
   });
 
-  const { data: users = [], isLoading: isUsersLoading } = useQuery({
-    queryKey: ["whatsapp-eligible-users", debouncedUserSearch],
+
+
+  const { data: searchedClients = [], isLoading: isSearchingClients } = useQuery({
+    queryKey: ["admin-client-search", debouncedClientSearch],
     queryFn: async () => {
-      if (debouncedUserSearch.length < 2) return [];
+      if (debouncedClientSearch.length < 3) return [];
       
-      const { data: profiles, error: profilesError } = await supabase
+      // Find client owners by email in profiles
+      const { data: profiles, error: profileError } = await supabase
         .from("profiles")
         .select("user_id, email, full_name")
-        .or(`email.ilike.%${debouncedUserSearch}%,full_name.ilike.%${debouncedUserSearch}%`)
-        .limit(20);
+        .ilike("email", `%${debouncedClientSearch}%`)
+        .limit(5);
+
+      if (profileError || !profiles.length) return [];
+
+      const userIds = profiles.map(p => p.user_id);
       
-      if (profilesError) {
-        console.error("Error fetching profiles:", profilesError);
-        return [];
-      }
-
-      return profiles;
-    },
-    enabled: debouncedUserSearch.length >= 2
-  });
-
-  const { data: accessList = [] } = useQuery({
-    queryKey: ["admin-wa-access"],
-    queryFn: async () => {
-      // Fetch access records first
-      const { data: access, error: accessError } = await (supabase.from("whatsapp_user_access" as any) as any)
-        .select(`id, user_id, application_id`);
-      
-      if (accessError) throw accessError;
-      if (!access || access.length === 0) return [];
-
-      // Fetch profiles for these users
-      const userIds = [...new Set(access.map((a: any) => a.user_id))];
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("user_id, email, full_name")
+      // Find clients belonging to these users
+      const { data: clients, error: clientError } = await supabase
+        .from("clients")
+        .select("id, company_name, user_id")
         .in("user_id", userIds);
 
-      if (profilesError) {
-        console.warn("Could not fetch profiles for access list:", profilesError);
-        return access.map((a: any) => ({ ...a, profile: null })) as UserAccess[];
-      }
+      if (clientError) return [];
 
-      // Join in frontend
-      return access.map((acc: any) => ({
-        ...acc,
-        profile: profiles?.find(p => p.user_id === acc.user_id) || null
-      })) as UserAccess[];
+      return clients.map(c => ({
+        ...c,
+        email: profiles.find(p => p.user_id === c.user_id)?.email
+      }));
+    },
+    enabled: debouncedClientSearch.length >= 3
+  });
+
+  const { data: allClients = [] } = useQuery({
+    queryKey: ["admin-all-clients"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, company_name")
+        .order("company_name");
+      if (error) throw error;
+      return data;
     }
   });
 
@@ -147,11 +146,15 @@ export default function AdminWhatsAppBotsPage() {
         .insert([{
           name: botData.name,
           provider_type: botData.provider_type,
-          api_config: botData.provider_type === "api" ? {
+          api_config: {
             panel_url: botData.panel_url,
             api_key: botData.api_key,
             phone_id: botData.phone_id
-          } : {},
+          },
+          // Map phone_id to phone_number_id for webhook identification
+          phone_number_id: botData.phone_id,
+          client_id: botData.client_id || null,
+          ai_context: botData.ai_context,
           status: "pending"
         }])
         .select()
@@ -163,27 +166,15 @@ export default function AdminWhatsAppBotsPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-wa-bots"] });
       toast.success("WhatsApp Bot created successfully");
       setIsAddBotOpen(false);
-      setNewBot({ name: "", provider_type: "api", panel_url: "", api_key: "", phone_id: "" });
-    }
-  });
-
-  const assignUserMutation = useMutation({
-    mutationFn: async ({ botId, userId }: { botId: string, userId: string }) => {
-      const { error } = await (supabase.from("whatsapp_user_access" as any) as any)
-        .upsert([{ 
-          application_id: botId, 
-          user_id: userId,
-          granted_by: (await supabase.auth.getUser()).data.user?.id
-        }], { onConflict: 'user_id,application_id' });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-wa-access"] });
-      toast.success("User access managed successfully");
-      setIsAssignOpen(false);
-    },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to assign user");
+      setNewBot({ 
+        name: "", 
+        provider_type: "api", 
+        panel_url: "", 
+        api_key: "", 
+        phone_id: "", 
+        phone_number_id: "", 
+        client_id: "" 
+      });
     }
   });
 
@@ -198,6 +189,9 @@ export default function AdminWhatsAppBotsPage() {
             api_key: botData.api_key,
             phone_id: botData.phone_id
           } : {},
+          phone_number_id: botData.phone_number_id,
+          client_id: botData.client_id || null,
+          ai_context: botData.ai_context,
           status: botData.status
         })
         .eq("id", botData.id);
@@ -219,19 +213,6 @@ export default function AdminWhatsAppBotsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-wa-bots"] });
       toast.success("Bot deleted");
-    }
-  });
-
-  const removeAccessMutation = useMutation({
-    mutationFn: async (accessId: string) => {
-      const { error } = await (supabase.from("whatsapp_user_access" as any) as any)
-        .delete()
-        .eq("id", accessId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-wa-access"] });
-      toast.success("Access revoked");
     }
   });
 
@@ -322,22 +303,21 @@ export default function AdminWhatsAppBotsPage() {
                 {bot.provider_type === 'api' && (
                   <div className="flex items-center gap-2 pt-1 truncate"><ExternalLink className="h-3 w-3" /> {bot.api_config?.panel_url}</div>
                 )}
-                <div className="flex items-center gap-2 pt-1 border-t border-white/5 mt-2 transition-all">
-                  <UserPlus className="h-3 w-3 text-primary" />
-                  <span className="truncate">
-                    {accessList.find(acc => acc.application_id === bot.id)?.profile?.email || 'No user assigned'}
-                  </span>
-                </div>
+                  {bot.client_id ? (
+                    <div className="flex items-center gap-2 pt-1 border-t border-white/5 mt-2 text-primary font-bold">
+                      <Globe className="h-3 w-3" />
+                      <span className="truncate">
+                        Client: {allClients.find(c => c.id === bot.client_id)?.company_name || 'Assigned'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 pt-1 border-t border-white/5 mt-2 text-orange-500 italic">
+                      <Globe className="h-3 w-3 opacity-50" />
+                      <span>No client linked</span>
+                    </div>
+                  )}
               </div>
-              <div className="flex flex-wrap gap-2 pt-2">
-                <Button size="sm" variant="secondary" onClick={() => {
-                  setSelectedBotId(bot.id);
-                  const currentAccess = accessList.find(acc => acc.application_id === bot.id);
-                  setAssignUserId(currentAccess?.user_id || "");
-                  setIsAssignOpen(true);
-                }}>
-                  <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Assign User
-                </Button>
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-white/5 mt-auto">
                 <Button size="sm" variant="outline" onClick={() => {
                   setSelectedBotId(bot.id);
                   setIsTestOpen(true);
@@ -352,6 +332,9 @@ export default function AdminWhatsAppBotsPage() {
                     panel_url: bot.api_config?.panel_url || "",
                     api_key: bot.api_config?.api_key || "",
                     phone_id: bot.api_config?.phone_id || "",
+                    phone_number_id: (bot as any).phone_number_id || "",
+                    client_id: (bot as any).client_id || "",
+                    ai_context: (bot as any).ai_context || "",
                     status: bot.status
                   });
                   setIsEditOpen(true);
@@ -371,120 +354,76 @@ export default function AdminWhatsAppBotsPage() {
         ))}
       </div>
 
-      <Card className="border-white/10 bg-card/50 backdrop-blur-md">
-        <CardHeader>
-          <CardTitle className="text-lg font-bold flex items-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
-            Access Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Bot</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {accessList.map(acc => (
-                <TableRow key={acc.id}>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-semibold">{acc.profile?.full_name || 'N/A'}</span>
-                      <span className="text-xs text-muted-foreground">{acc.profile?.email}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>{bots.find(b => b.id === acc.application_id)?.name || 'Unknown'}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => removeAccessMutation.mutate(acc.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
       <Dialog open={isAddBotOpen} onOpenChange={setIsAddBotOpen}>
         <DialogContent className="max-w-md bg-card border-white/10">
           <DialogHeader><DialogTitle>Create WhatsApp Bot</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Bot Name</Label>
-              <Input value={newBot.name} onChange={e => setNewBot({...newBot, name: e.target.value})} />
+              <Input placeholder="LeadNest Assistant" value={newBot.name} onChange={e => setNewBot({...newBot, name: e.target.value})} />
             </div>
+
+            <div className="space-y-3 pt-2 border-t border-white/5">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider font-bold">API Configuration</Label>
+              <Input placeholder="Panel URL (e.g. https://gate.whapi.cloud/v2)" value={newBot.panel_url} onChange={e => setNewBot({...newBot, panel_url: e.target.value})} />
+              <Input placeholder="API Key" type="password" value={newBot.api_key} onChange={e => setNewBot({...newBot, api_key: e.target.value})} />
+              <Input placeholder="Phone ID" value={newBot.phone_id} onChange={e => setNewBot({...newBot, phone_id: e.target.value})} />
+            </div>
+
             <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={newBot.provider_type} onValueChange={(v: any) => setNewBot({...newBot, provider_type: v})}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Label>AI Bot Context / Instructions</Label>
+              <textarea 
+                placeholder="Example: You are a helpful sales assistant for Pixora. Use a friendly tone and ask for name/email."
+                className="flex min-h-[100px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={newBot.ai_context} 
+                onChange={e => setNewBot({...newBot, ai_context: e.target.value})} 
+              />
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-white/5">
+              <Label>Assign to Client (Search by Email)</Label>
+              <div className="relative">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Enter user email..." 
+                  className="pl-10 mb-2"
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                />
+              </div>
+              
+              <Select value={newBot.client_id} onValueChange={(v) => setNewBot({...newBot, client_id: v})}>
+                <SelectTrigger className="bg-white/5 border-white/10">
+                  <SelectValue placeholder={isSearchingClients ? "Searching..." : "Select the client..."} />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="api">External API</SelectItem>
-                  <SelectItem value="baileys">Baileys Session</SelectItem>
+                  {searchedClients.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-muted-foreground">
+                      {clientSearch.length < 3 ? "Type 3+ chars to search" : "No clients found for this email"}
+                    </div>
+                  ) : (
+                    searchedClients.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.company_name} ({c.email})
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
-            {newBot.provider_type === "api" && (
-              <div className="space-y-3 pt-2 border-t border-white/5">
-                <Input placeholder="Panel URL" value={newBot.panel_url} onChange={e => setNewBot({...newBot, panel_url: e.target.value})} />
-                <Input placeholder="API Key" type="password" value={newBot.api_key} onChange={e => setNewBot({...newBot, api_key: e.target.value})} />
-                <Input placeholder="Phone ID" value={newBot.phone_id} onChange={e => setNewBot({...newBot, phone_id: e.target.value})} />
-              </div>
-            )}
           </div>
           <DialogFooter>
-            <Button onClick={() => createBotMutation.mutate(newBot)} disabled={!newBot.name}>Save Bot</Button>
+            <Button 
+              onClick={() => createBotMutation.mutate(newBot)} 
+              disabled={!newBot.name || !newBot.client_id || !newBot.api_key}
+              className="w-full"
+            >
+              Save & Link Bot
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isAssignOpen} onOpenChange={(v) => { setIsAssignOpen(v); if(!v) setUserSearch(""); }}>
-        <DialogContent className="max-w-md bg-card border-white/10">
-          <DialogHeader><DialogTitle>Assign Bot</DialogTitle></DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label>Search Users</Label>
-              <div className="relative">
-                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Filter by name or email..." 
-                  className="pl-10"
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Select User</Label>
-              <Select value={assignUserId} onValueChange={setAssignUserId}>
-                <SelectTrigger><SelectValue placeholder="User" /></SelectTrigger>
-                <SelectContent>
-                  {isUsersLoading && (
-                    <div className="px-2 py-4 text-xs text-muted-foreground text-center animate-pulse">Searching users...</div>
-                  )}
-                  {!isUsersLoading && userSearch.length < 2 && (
-                    <div className="px-2 py-4 text-xs text-muted-foreground text-center">Type at least 2 characters to search</div>
-                  )}
-                  {users.map(u => (
-                    <SelectItem key={u.user_id} value={u.user_id}>
-                      {u.full_name ? `${u.full_name} (${u.email})` : u.email}
-                    </SelectItem>
-                  ))}
-                  {!isUsersLoading && userSearch.length >= 2 && users.length === 0 && (
-                    <div className="px-2 py-4 text-xs text-muted-foreground text-center">No users found for "{userSearch}"</div>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button disabled={!assignUserId} onClick={() => assignUserId && selectedBotId && assignUserMutation.mutate({ botId: selectedBotId, userId: assignUserId })}>Grant Access</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={isTestOpen} onOpenChange={setIsTestOpen}>
         <DialogContent className="max-w-md bg-card border-white/10">
@@ -560,6 +499,28 @@ export default function AdminWhatsAppBotsPage() {
                 </div>
               </div>
             )}
+            <div className="space-y-2">
+              <Label>Webhook Phone Number ID</Label>
+              <Input value={editBot?.phone_number_id} onChange={e => editBot && setEditBot({...editBot, phone_number_id: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>AI Bot Context / Instructions</Label>
+              <textarea 
+                className="flex min-h-[100px] w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={editBot?.ai_context} 
+                onChange={e => editBot && setEditBot({...editBot, ai_context: e.target.value})} 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Client ID</Label>
+              <Select value={editBot?.client_id || "none"} onValueChange={(v) => editBot && setEditBot({...editBot, client_id: v === "none" ? "" : v})}>
+                <SelectTrigger><SelectValue placeholder="Select Client" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {allClients.map(c => <SelectItem key={c.id} value={c.id}>{c.company_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             {editBot?.provider_type === "baileys" && (
               <div className="p-3 bg-secondary/50 rounded-lg text-sm text-muted-foreground border border-white/5">
                 Baileys sessions are managed via the local server scan. Switching to this mode will disable the External API settings for this bot.

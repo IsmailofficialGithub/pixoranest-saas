@@ -92,10 +92,18 @@ export async function updateMessageStatus(messageId: string, dbMessageId: string
   if (!token) return;
 
   try {
-    const baseUrl = WHATSAPP_API_URL.replace("/messages", "/status/");
-    const response = await fetch(`${baseUrl}${messageId}`, {
+    let targetUrl = WHATSAPP_API_URL.replace("/whatsapp-business", "/messages");
+    if (!targetUrl.endsWith("/")) targetUrl += "/";
+    targetUrl += messageId;
+
+    // In development, use the local proxy to avoid CORS
+    if (import.meta.env.DEV) {
+      targetUrl = targetUrl.replace("https://app.whapihub.com", "/whapi");
+    }
+
+    const response = await fetch(targetUrl, {
       headers: {
-        "Authorization": `Authorization ${token}`,
+        "Authorization": `Bearer ${token}`,
       },
     });
 
@@ -239,7 +247,8 @@ export async function syncWhatsAppTemplates(applicationId: string) {
   }
 
   // Construct templates list URL
-  targetUrl = targetUrl.endsWith("/") ? targetUrl + "templates" : targetUrl + "/templates";
+  // WhapiHub v2 uses /message_templates for both POST and GET (list)
+  targetUrl = targetUrl.endsWith("/") ? targetUrl + "message_templates" : targetUrl + "/message_templates";
 
   const response = await fetch(targetUrl, {
     headers: {
@@ -248,11 +257,22 @@ export async function syncWhatsAppTemplates(applicationId: string) {
   });
 
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err?.message || "Failed to fetch templates from WhatsApp API");
+    let errorMessage = "Failed to fetch templates from WhatsApp API";
+    try {
+      const err = await response.json();
+      errorMessage = err?.message || errorMessage;
+    } catch (e) {
+      errorMessage = `API Error ${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
   }
 
-  const result = await response.json();
+  let result;
+  try {
+    result = await response.json();
+  } catch (e) {
+    throw new Error("Invalid JSON response from WhatsApp API");
+  }
   const externalTemplates = result?.templates || result?.data || [];
 
   console.log(`🔍 Found ${externalTemplates.length} templates from API`);

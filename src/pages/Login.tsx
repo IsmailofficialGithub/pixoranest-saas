@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, getRedirectPath } from "@/contexts/AuthContext";
@@ -22,8 +22,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   // If already logged in with a profile, redirect
+  useEffect(() => {
+    if (!authLoading && session && profile) {
+      navigate(getRedirectPath(profile.role), { replace: true });
+    }
+  }, [authLoading, session, profile, navigate]);
+
   if (!authLoading && session && profile) {
-    navigate(getRedirectPath(profile.role), { replace: true });
     return null;
   }
 
