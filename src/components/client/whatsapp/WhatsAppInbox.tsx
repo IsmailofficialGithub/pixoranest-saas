@@ -132,7 +132,8 @@ export default function WhatsAppInbox() {
         to: activeChat.phone_number,
         body: messageInput,
         client_id: client?.id,
-        type: "text"
+        type: "text",
+        phoneNoId,
       });
       if (result.success) setMessageInput("");
     } catch (err) {
