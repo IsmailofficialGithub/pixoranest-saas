@@ -31,7 +31,7 @@ import {
   Calendar, CheckCircle, Heart, TrendingUp, PlusCircle,
   MoreVertical, Eye, Trash2, Copy, Edit, ChevronLeft,
   ChevronRight, LayoutGrid, List, Clock, Image, Video,
-  FileText, Send, X, Globe, RefreshCw, AlertCircle,
+  FileText, Send, X, Globe, RefreshCw, AlertCircle, Briefcase,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth,
@@ -57,6 +57,15 @@ interface SocialPost {
   posted_at: string | null;
   engagement_stats: any;
   error_message: string | null;
+  created_at: string;
+  brand_id: string | null;
+}
+
+interface SocialBrand {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  description: string | null;
   created_at: string;
 }
 
@@ -95,21 +104,34 @@ export default function SocialMediaPage() {
 
   const [stats, setStats] = useState<Stats | null>(null);
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [brands, setBrands] = useState<SocialBrand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<"calendar" | "list" | "analytics">("calendar");
+  const [viewMode, setViewMode] = useState<"calendar" | "list" | "brands" | "analytics">("calendar");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createBrandOpen, setCreateBrandOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [detailPost, setDetailPost] = useState<SocialPost | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [selectedBrandId, setSelectedBrandId] = useState<string>("all");
 
   const smService = assignedServices.find(s => s.service_slug === "social-media-automation");
 
   const fetchAll = useCallback(async () => {
     if (!client) return;
     setIsLoading(true);
-    await Promise.all([fetchStats(), fetchPosts()]);
+    await Promise.all([fetchStats(), fetchPosts(), fetchBrands()]);
     setIsLoading(false);
   }, [client]);
+
+  async function fetchBrands() {
+    if (!client) return;
+    const { data } = await supabase
+      .from("social_media_brands")
+      .select("*")
+      .eq("client_id", client.id)
+      .order("name");
+    setBrands((data as SocialBrand[]) || []);
+  }
 
   async function fetchStats() {
     if (!client) return;
@@ -174,6 +196,9 @@ export default function SocialMediaPage() {
           <p className="text-sm text-muted-foreground mt-1">Manage and schedule posts across all platforms</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={() => setCreateBrandOpen(true)}>
+            <PlusCircle className="h-4 w-4 mr-1" /> Create Brand
+          </Button>
           <Button size="sm" onClick={() => { setEditingPost(null); setCreateModalOpen(true); }}>
             <PlusCircle className="h-4 w-4 mr-1" /> Create Post
           </Button>
@@ -204,15 +229,34 @@ export default function SocialMediaPage() {
       </div>
 
       {/* View Toggle */}
-      <div className="flex items-center gap-2">
-        <Button variant={viewMode === "calendar" ? "default" : "outline"} size="sm" onClick={() => setViewMode("calendar")}><Calendar className="h-4 w-4 mr-1" /> Calendar</Button>
-        <Button variant={viewMode === "list" ? "default" : "outline"} size="sm" onClick={() => setViewMode("list")}><List className="h-4 w-4 mr-1" /> List</Button>
-        <Button variant={viewMode === "analytics" ? "default" : "outline"} size="sm" onClick={() => setViewMode("analytics")}><TrendingUp className="h-4 w-4 mr-1" /> Analytics</Button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <Button variant={viewMode === "calendar" ? "default" : "outline"} size="sm" onClick={() => setViewMode("calendar")}><Calendar className="h-4 w-4 mr-1" /> Calendar</Button>
+          <Button variant={viewMode === "list" ? "default" : "outline"} size="sm" onClick={() => setViewMode("list")}><List className="h-4 w-4 mr-1" /> List</Button>
+          <Button variant={viewMode === "brands" ? "default" : "outline"} size="sm" onClick={() => setViewMode("brands")}><Briefcase className="h-4 w-4 mr-1" /> Brands</Button>
+          <Button variant={viewMode === "analytics" ? "default" : "outline"} size="sm" onClick={() => setViewMode("analytics")}><TrendingUp className="h-4 w-4 mr-1" /> Analytics</Button>
+        </div>
+
+        {viewMode === "analytics" && brands.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Label className="text-xs shrink-0">Filter by Brand:</Label>
+            <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+              <SelectTrigger className="w-[180px] h-8 text-xs">
+                <SelectValue placeholder="All Brands" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Brands</SelectItem>
+                {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {viewMode === "calendar" && <CalendarView posts={posts} month={calendarMonth} setMonth={setCalendarMonth} onDayClick={(day) => {}} onPostClick={setDetailPost} />}
       {viewMode === "list" && <ListView posts={posts} onEdit={p => { setEditingPost(p); setCreateModalOpen(true); }} onView={setDetailPost} onDelete={async (id) => { await supabase.from("social_media_posts").delete().eq("id", id); fetchPosts(); fetchStats(); }} />}
-      {viewMode === "analytics" && <AnalyticsView posts={posts} />}
+      {viewMode === "brands" && <BrandsView brands={brands} posts={posts} onRefresh={fetchBrands} onDelete={async (id) => { await supabase.from("social_media_brands").delete().eq("id", id); fetchBrands(); }} />}
+      {viewMode === "analytics" && <AnalyticsView posts={selectedBrandId === "all" ? posts : posts.filter(p => p.brand_id === selectedBrandId)} brands={brands} selectedBrandId={selectedBrandId} />}
 
       {/* Empty State */}
       {posts.length === 0 && !isLoading && (
@@ -227,7 +271,8 @@ export default function SocialMediaPage() {
       )}
 
       {/* Modals */}
-      <CreatePostModal open={createModalOpen} onOpenChange={setCreateModalOpen} clientId={client?.id || ""} existingPost={editingPost} onSaved={() => { fetchPosts(); fetchStats(); setEditingPost(null); }} />
+      <CreatePostModal open={createModalOpen} onOpenChange={setCreateModalOpen} clientId={client?.id || ""} brands={brands} existingPost={editingPost} onSaved={() => { fetchPosts(); fetchStats(); setEditingPost(null); }} />
+      <CreateBrandModal open={createBrandOpen} onOpenChange={setCreateBrandOpen} clientId={client?.id || ""} onSaved={fetchBrands} />
       <PostDetailModal post={detailPost} onClose={() => setDetailPost(null)} onEdit={p => { setDetailPost(null); setEditingPost(p); setCreateModalOpen(true); }} />
     </div>
   );
@@ -390,8 +435,9 @@ function ListView({ posts, onEdit, onView, onDelete }: {
 }
 
 /* ─── Analytics View ─── */
-function AnalyticsView({ posts }: { posts: SocialPost[] }) {
+function AnalyticsView({ posts, brands, selectedBrandId }: { posts: SocialPost[]; brands: SocialBrand[]; selectedBrandId: string }) {
   const publishedPosts = posts.filter(p => p.status === "posted");
+  const selectedBrand = brands.find(b => b.id === selectedBrandId);
 
   // Posts by platform
   const platformCounts = PLATFORMS.map(pl => ({
@@ -428,6 +474,17 @@ function AnalyticsView({ posts }: { posts: SocialPost[] }) {
 
   return (
     <div className="space-y-4">
+      {selectedBrand && (
+        <div className="flex items-center gap-3 mb-2">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            {selectedBrand.logo_url ? <img src={selectedBrand.logo_url} className="h-6 w-6 object-contain" /> : <Briefcase className="h-5 w-5 text-primary" />}
+          </div>
+          <div>
+            <h3 className="text-lg font-bold">{selectedBrand.name} Analytics</h3>
+            <p className="text-xs text-muted-foreground">{selectedBrand.description || "Performance overview for this brand"}</p>
+          </div>
+        </div>
+      )}
       {/* Overview */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <MiniStat label="Total Published" value={publishedPosts.length} />
@@ -503,12 +560,13 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 }
 
 /* ─── Create/Edit Post Modal ─── */
-function CreatePostModal({ open, onOpenChange, clientId, existingPost, onSaved }: {
-  open: boolean; onOpenChange: (v: boolean) => void; clientId: string; existingPost: SocialPost | null; onSaved: () => void;
+function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, onSaved }: {
+  open: boolean; onOpenChange: (v: boolean) => void; clientId: string; brands: SocialBrand[]; existingPost: SocialPost | null; onSaved: () => void;
 }) {
   const { toast } = useToast();
   const isEdit = existingPost && existingPost.id;
 
+  const [selectedBrandId, setSelectedBrandId] = useState<string>(existingPost?.brand_id || "");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(existingPost ? [existingPost.platform] : []);
   const [postType, setPostType] = useState(existingPost?.post_type || "text");
   const [content, setContent] = useState(existingPost?.content || "");
@@ -519,6 +577,7 @@ function CreatePostModal({ open, onOpenChange, clientId, existingPost, onSaved }
 
   useEffect(() => {
     if (existingPost) {
+      setSelectedBrandId(existingPost.brand_id || "");
       setSelectedPlatforms([existingPost.platform]);
       setPostType(existingPost.post_type || "text");
       setContent(existingPost.content);
@@ -526,6 +585,7 @@ function CreatePostModal({ open, onOpenChange, clientId, existingPost, onSaved }
       setScheduleType(existingPost.status === "draft" ? "draft" : existingPost.scheduled_at ? "later" : "now");
       setScheduledAt(existingPost.scheduled_at ? format(parseISO(existingPost.scheduled_at), "yyyy-MM-dd'T'HH:mm") : "");
     } else {
+      setSelectedBrandId("");
       setSelectedPlatforms([]);
       setPostType("text");
       setContent("");
@@ -553,6 +613,7 @@ function CreatePostModal({ open, onOpenChange, clientId, existingPost, onSaved }
 
     if (isEdit) {
       await supabase.from("social_media_posts").update({
+        brand_id: selectedBrandId || null,
         platform: selectedPlatforms[0] as any,
         post_type: postType as any,
         content: content.trim(),
@@ -564,6 +625,7 @@ function CreatePostModal({ open, onOpenChange, clientId, existingPost, onSaved }
       // Create one record per platform
       const records = selectedPlatforms.map(pl => ({
         client_id: clientId,
+        brand_id: selectedBrandId || null,
         platform: pl as any,
         post_type: postType as any,
         content: content.trim(),
@@ -591,6 +653,22 @@ function CreatePostModal({ open, onOpenChange, clientId, existingPost, onSaved }
         <div className="grid gap-6 lg:grid-cols-5">
           {/* Left: Editor */}
           <div className="lg:col-span-3 space-y-4">
+            {/* Brand Selection */}
+            {brands.length > 0 && (
+              <div>
+                <Label className="text-xs font-semibold">Brand (Optional)</Label>
+                <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select a brand" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No Brand</SelectItem>
+                    {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Platform Selection */}
             <div>
               <Label className="text-xs font-semibold">Platforms</Label>
@@ -763,6 +841,124 @@ function PostDetailModal({ post, onClose, onEdit }: { post: SocialPost | null; o
             <Button variant="outline" onClick={() => onEdit(post)}><Edit className="h-4 w-4 mr-1" /> Edit</Button>
           )}
           <Button variant="outline" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─── Brands View ─── */
+function BrandsView({ brands, posts, onRefresh, onDelete }: { brands: SocialBrand[]; posts: SocialPost[]; onRefresh: () => void; onDelete: (id: string) => void }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {brands.map(brand => {
+        const brandPosts = posts.filter(p => p.brand_id === brand.id);
+        const publishedCount = brandPosts.filter(p => p.status === "posted").length;
+        const scheduledCount = brandPosts.filter(p => p.status === "scheduled").length;
+
+        return (
+          <Card key={brand.id}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    {brand.logo_url ? <img src={brand.logo_url} className="h-6 w-6 object-contain" /> : <Briefcase className="h-5 w-5 text-primary" />}
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">{brand.name}</CardTitle>
+                    <p className="text-[10px] text-muted-foreground">{brand.created_at ? format(parseISO(brand.created_at), "MMM d, yyyy") : "Just now"}</p>
+                  </div>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem className="text-destructive" onClick={() => onDelete(brand.id)}><Trash2 className="h-3 w-3 mr-2" /> Delete</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground line-clamp-2 min-h-[40px] mb-4">{brand.description || "No description provided."}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-md bg-muted/50 p-2 text-center">
+                  <p className="text-lg font-bold">{publishedCount}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">Published</p>
+                </div>
+                <div className="rounded-md bg-muted/50 p-2 text-center">
+                  <p className="text-lg font-bold">{scheduledCount}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">Scheduled</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+      {brands.length === 0 && (
+        <div className="col-span-full text-center py-12 border rounded-lg border-dashed">
+          <Briefcase className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-20" />
+          <p className="text-sm text-muted-foreground">No brands created yet.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Create Brand Modal ─── */
+function CreateBrandModal({ open, onOpenChange, clientId, onSaved }: { open: boolean; onOpenChange: (v: boolean) => void; clientId: string; onSaved: () => void }) {
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    const { error } = await supabase.from("social_media_brands").insert({
+      client_id: clientId,
+      name: name.trim(),
+      description: description.trim(),
+      logo_url: logoUrl.trim() || null
+    });
+    setSaving(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Brand Created", description: "Your new brand has been added." });
+      setName("");
+      setDescription("");
+      setLogoUrl("");
+      onOpenChange(false);
+      onSaved();
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create New Brand</DialogTitle>
+          <DialogDescription>Add a new brand to manage its social presence.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="name">Brand Name</Label>
+            <Input id="name" placeholder="e.g. Acme Corp" value={name} onChange={e => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="desc">Description (Optional)</Label>
+            <Textarea id="desc" placeholder="Briefly describe the brand" value={description} onChange={e => setDescription(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="logo">Logo URL (Optional)</Label>
+            <Input id="logo" placeholder="https://example.com/logo.png" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={saving || !name.trim()} onClick={handleSave}>
+            {saving ? "Creating..." : "Create Brand"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

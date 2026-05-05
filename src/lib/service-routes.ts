@@ -19,6 +19,7 @@ export const SERVICE_ROUTE_MAP: Record<string, string> = {
   "voice-agent": "voice-agent",
   "whatsapp": "whatsapp",
   "social-media": "social-media",
+  "socialium": "social-media",
   "inbound": "first-voice",
 };
 
