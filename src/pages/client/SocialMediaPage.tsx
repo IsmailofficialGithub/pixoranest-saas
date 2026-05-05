@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useClient } from "@/contexts/ClientContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -108,7 +108,7 @@ export default function SocialMediaPage() {
   const [brands, setBrands] = useState<SocialBrand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  const [viewMode, setViewMode] = useState<"calendar" | "list" | "brands" | "analytics">("calendar");
+  const [viewMode, setViewMode] = useState<"calendar" | "list" | "brands" | "analytics" | "accounts">("calendar");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createBrandOpen, setCreateBrandOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
@@ -219,7 +219,10 @@ export default function SocialMediaPage() {
               <p.icon className="h-8 w-8" style={{ color: p.color }} />
               <div>
                 <p className="text-sm font-medium text-foreground">{p.label}</p>
-                <Badge variant="outline" className="text-[10px] mt-0.5">Not Connected</Badge>
+                <div className="flex flex-col gap-1 mt-0.5">
+                  <Badge variant="outline" className="text-[10px] w-fit">Not Connected</Badge>
+                  <Button variant="link" size="sm" className="h-auto p-0 text-[10px] justify-start text-primary hover:no-underline">Connect Account</Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -239,6 +242,7 @@ export default function SocialMediaPage() {
         <div className="flex items-center gap-2">
           <Button variant={viewMode === "calendar" ? "default" : "outline"} size="sm" onClick={() => setViewMode("calendar")}><Calendar className="h-4 w-4 mr-1" /> Calendar</Button>
           <Button variant={viewMode === "list" ? "default" : "outline"} size="sm" onClick={() => setViewMode("list")}><List className="h-4 w-4 mr-1" /> List</Button>
+          <Button variant={viewMode === "accounts" ? "default" : "outline"} size="sm" onClick={() => setViewMode("accounts")}><Globe className="h-4 w-4 mr-1" /> Accounts</Button>
           <Button variant={viewMode === "brands" ? "default" : "outline"} size="sm" onClick={() => setViewMode("brands")}><Briefcase className="h-4 w-4 mr-1" /> Brands</Button>
           <Button variant={viewMode === "analytics" ? "default" : "outline"} size="sm" onClick={() => setViewMode("analytics")}><TrendingUp className="h-4 w-4 mr-1" /> Analytics</Button>
         </div>
@@ -263,6 +267,7 @@ export default function SocialMediaPage() {
       {viewMode === "list" && <ListView posts={posts} onEdit={p => { setEditingPost(p); setCreateModalOpen(true); }} onView={setDetailPost} onDelete={async (id) => { await supabase.from("social_media_posts").delete().eq("id", id); fetchPosts(); fetchStats(); }} />}
       {viewMode === "brands" && <BrandsView brands={brands} posts={posts} onRefresh={fetchBrands} onDelete={async (id) => { await supabase.from("social_media_brands").delete().eq("id", id); fetchBrands(); }} />}
       {viewMode === "analytics" && <AnalyticsView posts={selectedBrandId === "all" ? posts : posts.filter(p => p.brand_id === selectedBrandId)} brands={brands} selectedBrandId={selectedBrandId} />}
+      {viewMode === "accounts" && <AccountsView />}
 
       {/* Empty State */}
       {posts.length === 0 && !isLoading && (
@@ -391,9 +396,21 @@ function ListView({ posts, onEdit, onView, onDelete }: {
                   {posts.map(p => (
                     <TableRow key={p.id} className="cursor-pointer" onClick={() => onView(p)}>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          {p.media_urls && p.media_urls.length > 0 && <Image className="h-4 w-4 text-muted-foreground shrink-0" />}
-                          <p className="text-sm truncate max-w-[250px]">{p.content}</p>
+                        <div className="flex items-center gap-3">
+                          {p.media_urls && p.media_urls.length > 0 ? (
+                            <div className="h-10 w-10 rounded overflow-hidden bg-muted shrink-0">
+                              {p.post_type === "video" ? (
+                                <video src={p.media_urls[0]} className="h-full w-full object-cover" />
+                              ) : (
+                                <img src={p.media_urls[0]} alt="" className="h-full w-full object-cover" />
+                              )}
+                            </div>
+                          ) : (
+                            <div className="h-10 w-10 rounded border border-dashed flex items-center justify-center shrink-0">
+                              <FileText className="h-4 w-4 text-muted-foreground/40" />
+                            </div>
+                          )}
+                          <p className="text-sm truncate max-w-[200px] font-medium">{p.content}</p>
                         </div>
                       </TableCell>
                       <TableCell><PlatformBadge platform={p.platform} /></TableCell>
@@ -423,7 +440,14 @@ function ListView({ posts, onEdit, onView, onDelete }: {
                     <PlatformBadge platform={p.platform} />
                     <PostStatusBadge status={p.status} />
                   </div>
-                  <p className="text-sm line-clamp-2">{p.content}</p>
+                  <div className="flex gap-3">
+                    {p.media_urls && p.media_urls.length > 0 && (
+                      <div className="h-12 w-12 rounded overflow-hidden bg-muted shrink-0">
+                        <img src={p.media_urls[0]} alt="" className="h-full w-full object-cover" />
+                      </div>
+                    )}
+                    <p className="text-sm line-clamp-2 flex-1">{p.content}</p>
+                  </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     {p.status === "posted" && <EngagementMini stats={p.engagement_stats} />}
                     <span>{p.posted_at || p.scheduled_at ? formatDistanceToNow(parseISO(p.posted_at || p.scheduled_at || ""), { addSuffix: true }) : ""}</span>
@@ -861,6 +885,28 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
                 {hashtags && (
                   <p className="text-xs text-primary">{hashtags.split(",").map(h => h.trim()).filter(Boolean).map(h => h.startsWith("#") ? h : `#${h}`).join(" ")}</p>
                 )}
+
+                {mediaUrls.filter(u => u.trim() !== "").length > 0 && (
+                  <div className={`grid gap-2 mt-3 ${mediaUrls.filter(u => u.trim() !== "").length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+                    {mediaUrls.filter(u => u.trim() !== "").map((url, idx) => (
+                      <div key={idx} className="relative aspect-square rounded-md overflow-hidden bg-muted group">
+                        {postType === "video" ? (
+                          <video src={url} className="w-full h-full object-cover" />
+                        ) : (
+                          <img src={url} className="w-full h-full object-cover" />
+                        )}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                           <Button variant="ghost" size="icon" className="h-6 w-6 text-white" onClick={(e) => {
+                             e.stopPropagation();
+                             setMediaUrls(mediaUrls.filter((_, i) => i !== idx));
+                           }}>
+                             <X className="h-3 w-3" />
+                           </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-around text-xs text-muted-foreground">
                   <span>👍 Like</span>
@@ -917,6 +963,19 @@ function PostDetailModal({ post, onClose, onEdit }: { post: SocialPost | null; o
         </DialogHeader>
 
         <div className="space-y-4">
+          {post.media_urls && post.media_urls.length > 0 && (
+            <div className={`grid gap-2 ${post.media_urls.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+              {post.media_urls.map((url, idx) => (
+                <div key={idx} className="relative aspect-video rounded-lg overflow-hidden bg-muted border">
+                  {post.post_type === "video" ? (
+                    <video src={url} controls className="w-full h-full object-contain" />
+                  ) : (
+                    <img src={url} alt="" className="w-full h-full object-contain" />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <p className="text-sm whitespace-pre-wrap">{post.content}</p>
 
           {post.hashtags && post.hashtags.length > 0 && (
@@ -1124,5 +1183,37 @@ function LoadingSkeleton() {
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}</div>
       <Skeleton className="h-96" />
     </div>
+  );
+}
+
+/* ─── Accounts View ─── */
+function AccountsView() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Social Media Accounts</CardTitle>
+        <CardDescription>Connect and manage the social media accounts you want to post to.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4 md:grid-cols-2">
+          {PLATFORMS.map(p => (
+            <div key={p.key} className="flex items-center justify-between p-5 border rounded-xl hover:border-primary/50 hover:bg-muted/30 transition-all group">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-full bg-background border flex items-center justify-center shadow-sm">
+                  <p.icon className="h-7 w-7" style={{ color: p.color }} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold">{p.label}</p>
+                  <p className="text-xs text-muted-foreground">Not connected</p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" className="h-9 px-4 rounded-lg group-hover:bg-primary group-hover:text-primary-foreground transition-all">
+                Connect
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
