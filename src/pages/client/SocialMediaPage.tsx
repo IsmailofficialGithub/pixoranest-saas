@@ -221,7 +221,7 @@ export default function SocialMediaPage() {
                 <p className="text-sm font-medium text-foreground">{p.label}</p>
                 <div className="flex flex-col gap-1 mt-0.5">
                   <Badge variant="outline" className="text-[10px] w-fit">Not Connected</Badge>
-                  <Button variant="link" size="sm" className="h-auto p-0 text-[10px] justify-start text-primary hover:no-underline">Connect Account</Button>
+                  <Button variant="link" size="sm" className="h-auto p-0 text-[10px] justify-start text-primary hover:no-underline" onClick={() => setViewMode("accounts")}>Connect Account</Button>
                 </div>
               </div>
             </CardContent>
@@ -1188,32 +1188,113 @@ function LoadingSkeleton() {
 
 /* ─── Accounts View ─── */
 function AccountsView() {
+  const [connectingPlatform, setConnectingPlatform] = useState<typeof PLATFORMS[0] | null>(null);
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Social Media Accounts</CardTitle>
-        <CardDescription>Connect and manage the social media accounts you want to post to.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-4 md:grid-cols-2">
-          {PLATFORMS.map(p => (
-            <div key={p.key} className="flex items-center justify-between p-5 border rounded-xl hover:border-primary/50 hover:bg-muted/30 transition-all group">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-background border flex items-center justify-center shadow-sm">
-                  <p.icon className="h-7 w-7" style={{ color: p.color }} />
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Social Media Accounts</CardTitle>
+          <CardDescription>Connect and manage the social media accounts you want to post to.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            {PLATFORMS.map(p => (
+              <div key={p.key} className="flex items-center justify-between p-5 border rounded-xl hover:border-primary/50 hover:bg-muted/30 transition-all group">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-full bg-background border flex items-center justify-center shadow-sm">
+                    <p.icon className="h-7 w-7" style={{ color: p.color }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">{p.label}</p>
+                    <p className="text-xs text-muted-foreground">Not connected</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold">{p.label}</p>
-                  <p className="text-xs text-muted-foreground">Not connected</p>
-                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-9 px-4 rounded-lg group-hover:bg-primary group-hover:text-primary-foreground transition-all"
+                  onClick={() => setConnectingPlatform(p)}
+                >
+                  Connect
+                </Button>
               </div>
-              <Button variant="outline" size="sm" className="h-9 px-4 rounded-lg group-hover:bg-primary group-hover:text-primary-foreground transition-all">
-                Connect
-              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <ConnectPlatformModal 
+        platform={connectingPlatform} 
+        onClose={() => setConnectingPlatform(null)} 
+      />
+    </>
+  );
+}
+
+/* ─── Connect Platform Modal ─── */
+function ConnectPlatformModal({ platform, onClose }: { platform: typeof PLATFORMS[0] | null, onClose: () => void }) {
+  if (!platform) return null;
+
+  return (
+    <Dialog open={!!platform} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <platform.icon className="h-5 w-5" style={{ color: platform.color }} />
+            Connect {platform.label}
+          </DialogTitle>
+          <DialogDescription>
+            Authorize Socialium to manage your {platform.label} presence.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col items-center justify-center py-10 space-y-8">
+          <div className="flex items-center justify-center w-full">
+            <div className="relative">
+              <div className="h-20 w-20 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-inner">
+                <Globe className="h-10 w-10 text-primary" />
+              </div>
+              <div className="absolute -top-1 -right-1 h-4 w-4 bg-primary rounded-full border-2 border-background animate-pulse" />
             </div>
-          ))}
+
+            <div className="flex items-center px-4">
+              <div className="h-[1px] w-12 bg-gradient-to-r from-primary/50 to-transparent relative">
+                <div className="absolute top-1/2 left-0 h-1 w-1 bg-primary rounded-full -translate-y-1/2 animate-[ping_2s_infinite]" />
+              </div>
+              <div className="mx-2 p-1 rounded-full bg-muted border">
+                <PlusCircle className="h-3 w-3 text-muted-foreground" />
+              </div>
+              <div className="h-[1px] w-12 bg-gradient-to-l from-transparent to-border" />
+            </div>
+
+            <div className="h-20 w-20 rounded-2xl bg-muted/30 border-2 border-dashed flex items-center justify-center">
+              <platform.icon className="h-10 w-10 opacity-50" style={{ color: platform.color }} />
+            </div>
+          </div>
+
+          <div className="text-center space-y-2">
+            <h4 className="text-sm font-semibold">Permission Request</h4>
+            <p className="text-xs text-muted-foreground max-w-[280px]">
+              By continuing, you'll be redirected to {platform.label} to securely authorize Socialium to create and manage posts.
+            </p>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+
+        <DialogFooter className="sm:justify-between gap-2">
+          <Button variant="ghost" onClick={onClose} className="text-xs">Cancel</Button>
+          <Button 
+            className="rounded-lg px-6 font-semibold shadow-lg transition-transform active:scale-95" 
+            style={{ backgroundColor: platform.color, color: 'white' }}
+            onClick={() => {
+              window.open("#", "_blank");
+              onClose();
+            }}
+          >
+            Authenticate with {platform.label}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
