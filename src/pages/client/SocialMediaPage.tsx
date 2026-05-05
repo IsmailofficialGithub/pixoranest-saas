@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useClient } from "@/contexts/ClientContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigate } from "react-router-dom";
@@ -31,7 +31,7 @@ import {
   Calendar, CheckCircle, Heart, TrendingUp, PlusCircle,
   MoreVertical, Eye, Trash2, Copy, Edit, ChevronLeft,
   ChevronRight, LayoutGrid, List, Clock, Image, Video,
-  FileText, Send, X, Globe, RefreshCw, AlertCircle, Briefcase,
+  FileText, Send, X, Globe, RefreshCw, AlertCircle, Briefcase, Upload,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth,
@@ -43,6 +43,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Legend,
 } from "recharts";
+import { FaFacebook, FaInstagram, FaLinkedin, FaXTwitter } from "react-icons/fa6";
 
 /* ─── Types ─── */
 interface SocialPost {
@@ -77,10 +78,10 @@ interface Stats {
 }
 
 const PLATFORMS = [
-  { key: "facebook", label: "Facebook", icon: "📘", color: "#1877F2" },
-  { key: "instagram", label: "Instagram", icon: "📸", color: "#E4405F" },
-  { key: "linkedin", label: "LinkedIn", icon: "💼", color: "#0A66C2" },
-  { key: "twitter", label: "Twitter/X", icon: "🐦", color: "#1DA1F2" },
+  { key: "facebook", label: "Facebook", icon: FaFacebook, color: "#1877F2" },
+  { key: "instagram", label: "Instagram", icon: FaInstagram, color: "#E4405F" },
+  { key: "linkedin", label: "LinkedIn", icon: FaLinkedin, color: "#0A66C2" },
+  { key: "twitter", label: "Twitter/X", icon: FaXTwitter, color: "#000000" },
 ] as const;
 
 const CHAR_LIMITS: Record<string, number> = {
@@ -106,6 +107,7 @@ export default function SocialMediaPage() {
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [brands, setBrands] = useState<SocialBrand[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
   const [viewMode, setViewMode] = useState<"calendar" | "list" | "brands" | "analytics">("calendar");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createBrandOpen, setCreateBrandOpen] = useState(false);
@@ -114,7 +116,11 @@ export default function SocialMediaPage() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedBrandId, setSelectedBrandId] = useState<string>("all");
 
-  const smService = assignedServices.find(s => s.service_slug === "social-media-automation");
+  const smService = assignedServices.find(s => 
+    s.service_slug === "social-media-automation" || 
+    s.service_slug === "social-media" || 
+    s.service_slug === "socialium"
+  );
 
   const fetchAll = useCallback(async () => {
     if (!client) return;
@@ -125,7 +131,7 @@ export default function SocialMediaPage() {
 
   async function fetchBrands() {
     if (!client) return;
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("social_media_brands")
       .select("*")
       .eq("client_id", client.id)
@@ -210,7 +216,7 @@ export default function SocialMediaPage() {
         {PLATFORMS.map(p => (
           <Card key={p.key} className="min-w-[160px] shrink-0">
             <CardContent className="pt-4 pb-3 flex items-center gap-3">
-              <span className="text-2xl">{p.icon}</span>
+              <p.icon className="h-8 w-8" style={{ color: p.color }} />
               <div>
                 <p className="text-sm font-medium text-foreground">{p.label}</p>
                 <Badge variant="outline" className="text-[10px] mt-0.5">Not Connected</Badge>
@@ -420,7 +426,7 @@ function ListView({ posts, onEdit, onView, onDelete }: {
                   <p className="text-sm line-clamp-2">{p.content}</p>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     {p.status === "posted" && <EngagementMini stats={p.engagement_stats} />}
-                    <span>{p.posted_at || p.scheduled_at ? formatDistanceToNow(parseISO(p.posted_at || p.scheduled_at!), { addSuffix: true }) : ""}</span>
+                    <span>{p.posted_at || p.scheduled_at ? formatDistanceToNow(parseISO(p.posted_at || p.scheduled_at || ""), { addSuffix: true }) : ""}</span>
                   </div>
                 </div>
               ))}
@@ -573,7 +579,42 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
   const [hashtags, setHashtags] = useState(existingPost?.hashtags?.join(", ") || "");
   const [scheduleType, setScheduleType] = useState<"now" | "later" | "draft">(existingPost?.status === "draft" ? "draft" : existingPost?.scheduled_at ? "later" : "now");
   const [scheduledAt, setScheduledAt] = useState(existingPost?.scheduled_at ? format(parseISO(existingPost.scheduled_at), "yyyy-MM-dd'T'HH:mm") : "");
+  const [mediaUrls, setMediaUrls] = useState<string[]>(existingPost?.media_urls || []);
   const [saving, setSaving] = useState(false);
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || uploadingIdx === null) return;
+
+    setSaving(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const filePath = `${clientId}/${Date.now()}-${uploadingIdx}.${ext}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("social-media-assets")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from("social-media-assets")
+        .getPublicUrl(filePath);
+
+      const newUrls = [...mediaUrls];
+      newUrls[uploadingIdx] = urlData.publicUrl;
+      setMediaUrls(newUrls);
+      toast({ title: "Upload successful", description: "Media has been uploaded." });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+      setUploadingIdx(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   useEffect(() => {
     if (existingPost) {
@@ -584,6 +625,7 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
       setHashtags(existingPost.hashtags?.join(", ") || "");
       setScheduleType(existingPost.status === "draft" ? "draft" : existingPost.scheduled_at ? "later" : "now");
       setScheduledAt(existingPost.scheduled_at ? format(parseISO(existingPost.scheduled_at), "yyyy-MM-dd'T'HH:mm") : "");
+      setMediaUrls(existingPost.media_urls || []);
     } else {
       setSelectedBrandId("");
       setSelectedPlatforms([]);
@@ -592,6 +634,7 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
       setHashtags("");
       setScheduleType("now");
       setScheduledAt("");
+      setMediaUrls([]);
     }
   }, [existingPost, open]);
 
@@ -620,6 +663,7 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
         hashtags: hashtagsArr,
         status: status as any,
         scheduled_at: scheduleType === "later" ? scheduledAt : null,
+        media_urls: mediaUrls.filter(u => u.trim() !== ""),
       }).eq("id", existingPost!.id);
     } else {
       // Create one record per platform
@@ -632,6 +676,7 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
         hashtags: hashtagsArr,
         status: status as any,
         scheduled_at: scheduleType === "later" ? scheduledAt : null,
+        media_urls: mediaUrls.filter(u => u.trim() !== ""),
       }));
       await supabase.from("social_media_posts").insert(records);
     }
@@ -681,7 +726,8 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
                     className="text-xs"
                     onClick={() => togglePlatform(p.key)}
                   >
-                    <span className="mr-1">{p.icon}</span> {p.label}
+                    <p.icon className="h-3 w-3 mr-1.5" style={{ color: selectedPlatforms.includes(p.key) ? "white" : p.color }} />
+                    {p.label}
                   </Button>
                 ))}
               </div>
@@ -692,12 +738,75 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
               <Label className="text-xs font-semibold">Content Type</Label>
               <div className="flex gap-2 mt-1">
                 {POST_TYPES.map(t => (
-                  <Button key={t.key} variant={postType === t.key ? "default" : "outline"} size="sm" className="text-xs" onClick={() => setPostType(t.key)}>
+                  <Button key={t.key} variant={postType === t.key ? "default" : "outline"} size="sm" className="text-xs" onClick={() => {
+                    setPostType(t.key);
+                    if (t.key === "text") setMediaUrls([]);
+                    else if (mediaUrls.length === 0) setMediaUrls([""]);
+                  }}>
                     {t.icon} <span className="ml-1">{t.label}</span>
                   </Button>
                 ))}
               </div>
             </div>
+
+            {/* Media URL Inputs */}
+            {postType !== "text" && (
+              <div className="space-y-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold flex items-center gap-2">
+                    {postType === "image" ? <Image className="h-3 w-3" /> : postType === "video" ? <Video className="h-3 w-3" /> : <LayoutGrid className="h-3 w-3" />}
+                    {postType === "carousel" ? "Carousel Items" : postType === "video" ? "Video URL" : "Image URL"}
+                  </Label>
+                  {postType === "carousel" && (
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => setMediaUrls([...mediaUrls, ""])}>
+                      <PlusCircle className="h-3 w-3 mr-1" /> Add Slide
+                    </Button>
+                  )}
+                </div>
+                
+                {mediaUrls.map((url, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <div className="flex-1 relative">
+                      <Input 
+                        placeholder={`https://example.com/${postType === "video" ? "video.mp4" : "image.jpg"}`}
+                        value={url}
+                        onChange={e => {
+                          const newUrls = [...mediaUrls];
+                          newUrls[idx] = e.target.value;
+                          setMediaUrls(newUrls);
+                        }}
+                        className="h-8 text-xs bg-background pr-8"
+                      />
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute right-1 top-1 h-6 w-6 text-muted-foreground hover:text-primary"
+                        onClick={() => {
+                          setUploadingIdx(idx);
+                          fileInputRef.current?.click();
+                        }}
+                        disabled={saving}
+                      >
+                        <Upload className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {postType === "carousel" && mediaUrls.length > 1 && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => setMediaUrls(mediaUrls.filter((_, i) => i !== idx))}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept={postType === "video" ? "video/*" : "image/*"} 
+                  onChange={handleFileUpload} 
+                />
+                <p className="text-[10px] text-muted-foreground italic">Provide direct URLs to your media hosted on a CDN or cloud storage.</p>
+              </div>
+            )}
 
             {/* Content */}
             <div>
@@ -970,13 +1079,20 @@ function getPlatformColor(platform: string): string {
   return PLATFORMS.find(p => p.key === platform)?.color || "#666";
 }
 
-function getPlatformIcon(platform: string): string {
-  return PLATFORMS.find(p => p.key === platform)?.icon || "📝";
+function getPlatformIcon(platform: string) {
+  const p = PLATFORMS.find(pl => pl.key === platform);
+  if (!p) return <FileText className="h-4 w-4" />;
+  return <p.icon className="h-4 w-4" style={{ color: p.color }} />;
 }
 
 function PlatformBadge({ platform }: { platform: string }) {
   const p = PLATFORMS.find(pl => pl.key === platform);
-  return <Badge variant="outline" className="text-[10px]" style={{ borderColor: p?.color, color: p?.color }}>{p?.icon} {p?.label || platform}</Badge>;
+  return (
+    <Badge variant="outline" className="text-[10px] gap-1 px-1.5 h-5" style={{ borderColor: p?.color + "40", color: p?.color }}>
+      {p ? <p.icon className="h-2.5 w-2.5" /> : <FileText className="h-2.5 w-2.5" />}
+      {p?.label || platform}
+    </Badge>
+  );
 }
 
 function PostStatusBadge({ status }: { status: string }) {
