@@ -726,12 +726,15 @@ function CreatePostModal({ open, onOpenChange, clientId, brands, existingPost, o
             {brands.length > 0 && (
               <div>
                 <Label className="text-xs font-semibold">Brand (Optional)</Label>
-                <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+                <Select
+                  value={selectedBrandId || "none"}
+                  onValueChange={v => setSelectedBrandId(v === "none" ? "" : v)}
+                >
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Select a brand" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No Brand</SelectItem>
+                    <SelectItem value="none">No Brand</SelectItem>
                     {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
